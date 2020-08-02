@@ -4,6 +4,7 @@
 #include <iostream>
 #include <chrono>
 #include <set>
+#include <optional>
 
 #ifdef _WIN32
 
