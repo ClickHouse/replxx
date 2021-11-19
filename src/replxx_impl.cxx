@@ -43,7 +43,6 @@ namespace replxx {
 namespace {
 
 namespace action_names {
-
 char const INSERT_CHARACTER[]                  = "insert_character";
 char const NEW_LINE[]                          = "new_line";
 char const MOVE_CURSOR_TO_BEGINING_OF_LINE[]   = "move_cursor_to_begining_of_line";
@@ -2580,4 +2579,3 @@ void Replxx::ReplxxImpl::dynamic_refresh(Prompt& oldPrompt, Prompt& newPrompt, c
 }
 
 }
-

@@ -3259,6 +3259,7 @@ class ReplxxTests( unittest.TestCase ):
 			"x\r\n",
 			"123\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nZZZ\n"
 		)
+
 	def test_position_tracking_no_color( self_ ):
 		self_.check_scenario(
 			"abcdef<home><cr><c-d>",
@@ -3287,4 +3288,3 @@ if __name__ == "__main__":
 	pa = unittest.TestProgram.parseArgs
 	unittest.TestProgram.parseArgs = lambda self, argv: parseArgs( self, pa, argv )
 	unittest.main()
-
