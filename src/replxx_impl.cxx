@@ -985,12 +985,6 @@ void Replxx::ReplxxImpl::refresh_line( HINT_ACTION hintAction_, bool refreshProm
 		_refreshSkipped = true;
 		return;
 	}
-	if ( refreshPrompt_ )
-	{
-		_terminal.jump_cursor( 0, 0 );
-		_prompt.write();
-		_prompt._cursorRowOffset = _prompt._extraLines;
-	}
 	_refreshSkipped = false;
 	render( hintAction_ );
 	handle_hints( hintAction_ );
@@ -1010,10 +1004,16 @@ void Replxx::ReplxxImpl::refresh_line( HINT_ACTION hintAction_, bool refreshProm
 
 	// position at the end of the prompt, clear to end of previous input
 	_terminal.set_cursor_visible( false );
-	_terminal.jump_cursor(
-		_prompt.indentation(), // 0-based on Win32
-		-( _prompt._cursorRowOffset - _prompt._extraLines )
-	);
+	if ( refreshPrompt_ ) {
+		_terminal.jump_cursor( 0, -_prompt._cursorRowOffset );
+		_prompt.write();
+		_prompt._cursorRowOffset = _prompt._extraLines;
+	} else {
+		_terminal.jump_cursor(
+			_prompt.indentation(), // 0-based on Win32
+			-( _prompt._cursorRowOffset - _prompt._extraLines )
+		);
+	}
 	// display the input line
 	if ( _hasNewlines ) {
 		_terminal.clear_screen( Terminal::CLEAR_SCREEN::TO_END );
