@@ -4,6 +4,7 @@
 #include <iostream>
 #include <chrono>
 #include <cassert>
+#include <map>
 
 #ifdef _WIN32
 
@@ -1162,26 +1163,39 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 
 	// if we can extend the item, extend it and return to main loop
 	if ( ( longestCommonPrefix > _completionContextLength ) || ( completionsCount == 1 ) ) {
-		UnicodeString const* cand( &_completions[selectedCompletion].text() );
+		UnicodeString const* cand( nullptr );
+		// If _ignoreCase is on, we need to decide what's the proper situation of extending current
+		// prefix. The rule is: 1. if all prefixes are the same, do the extension even though it
+		// might generate upper case characters which loses the convenience of case-insensitive
+		// completion afterwards; 2. if there is a prefix with all lower case characters, do the
+		// extension. User has to adjust the prefix only when there are candidates like `format` and
+		// `FORMAT`, which is reasonable.
 		if ( _ignoreCase && ( _hintSelection == -1 ) ) {
+			std::map<UnicodeString, int> candidate_prefixes;
 			for ( int i( 0 ); i < completionsCount; ++ i ) {
-				if ( _completions[i].text() < *cand ) {
-					cand = &_completions[i].text();
+				candidate_prefixes.emplace(
+					std::piecewise_construct,
+					std::forward_as_tuple( _completions[i].text().get(), longestCommonPrefix ),
+					std::forward_as_tuple( i ));
+				const auto & valid_prefix = candidate_prefixes.rbegin()->first;
+				bool prefix_all_lower(
+					std::none_of( valid_prefix.begin(), valid_prefix.end(), []( char32_t x ) { return iswupper(static_cast<wint_t>(x)); } ) );
+				if (candidate_prefixes.size() == 1 || prefix_all_lower) {
+					cand = &_completions[candidate_prefixes.rbegin()->second].text();
 				}
 			}
+		} else {
+			cand = &_completions[selectedCompletion].text();
 		}
-		_pos -= _completionContextLength;
-		_data.erase( _pos, _completionContextLength );
-		_data.insert( _pos, *cand, 0, longestCommonPrefix );
-		_completionContextLength = longestCommonPrefix;
-		if ( _ignoreCase && ( completionsCount > 1 ) ) {
-			for ( int i( 0 ); i < longestCommonPrefix; ++ i ) {
-				_data[_pos + i] = static_cast<char32_t>( towlower( static_cast<wint_t>( _data[_pos + i] ) ) );
-			}
+		if ( cand ) {
+			_pos -= _completionContextLength;
+			_data.erase( _pos, _completionContextLength );
+			_data.insert( _pos, *cand, 0, longestCommonPrefix );
+			_completionContextLength = longestCommonPrefix;
+			_pos += _completionContextLength;
+			refresh_line();
+			return 0;
 		}
-		_pos += _completionContextLength;
-		refresh_line();
-		return 0;
 	}
 
 	if ( ! showCompletions_ ) {
