@@ -645,6 +645,8 @@ char const* Replxx::ReplxxImpl::input( std::string const& prompt ) {
 			return nullptr;
 		}
 
+		/// Always render from beginning of current line. It's to prevent garbage inputs during starting up.
+		_terminal.jump_cursor( 0, 0 );
 		_asyncPrompt.clear();
 		_updatePrompt = false;
 		_prompt.set_text( UnicodeString( prompt ) );
