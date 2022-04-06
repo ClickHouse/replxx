@@ -1862,7 +1862,7 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::commit_line( char32_t ) {
 }
 
 int Replxx::ReplxxImpl::prev_newline_position( int pos_ ) const {
-	assert( ( pos_ >= 0 ) && ( pos_ <= _data.length() ) );
+	assert( ( pos_ >= -1 ) && ( pos_ <= _data.length() ) );
 	if ( pos_ == _data.length() ) {
 		-- pos_;
 	}
