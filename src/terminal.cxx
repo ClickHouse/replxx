@@ -26,7 +26,7 @@ static DWORD const ENABLE_VIRTUAL_TERMINAL_PROCESSING = 4;
 
 #include <unistd.h>
 #include <sys/ioctl.h>
-#include <sys/select.h>
+#include <sys/poll.h>
 #include <fcntl.h>
 #include <signal.h>
 
@@ -263,7 +263,7 @@ int Terminal::reset_raw_mode( void ) {
 #ifdef _WIN32
 	SetConsoleMode(
 		_consoleIn,
-		( _origInMode & ~( ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT ) ) | ENABLE_QUICK_EDIT_MODE 
+		( _origInMode & ~( ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT ) ) | ENABLE_QUICK_EDIT_MODE
 	);
 	SetConsoleCP( 65001 );
 	enable_out();
@@ -629,21 +629,20 @@ Terminal::EVENT_TYPE Terminal::wait_for_input( int long timeout_ ) {
 		}
 	}
 #else
-	fd_set fdSet;
-	int nfds( max( _interrupt[0], _interrupt[1] ) + 1 );
+	std::array<pollfd, 2> fds;
+
 	while ( true ) {
-		FD_ZERO( &fdSet );
-		FD_SET( 0, &fdSet );
-		FD_SET( _interrupt[0], &fdSet );
-		timeval tv{ timeout_ / 1000, static_cast<suseconds_t>( ( timeout_ % 1000 ) * 1000 ) };
-		int err( select( nfds, &fdSet, nullptr, nullptr, timeout_ > 0 ? &tv : nullptr ) );
+		fds[0] = {0, POLLIN, 0};
+		fds[1] = {_interrupt[0], POLLIN, 0};
+		int err(poll(fds.data(), fds.size(), timeout_));
+
 		if ( ( err == -1 ) && ( errno == EINTR ) ) {
 			continue;
 		}
 		if ( err == 0 ) {
 			return ( EVENT_TYPE::TIMEOUT );
 		}
-		if ( FD_ISSET( _interrupt[0], &fdSet ) ) {
+		if (fds[1].revents & POLLIN) {
 			char data( 0 );
 			static_cast<void>( read( _interrupt[0], &data, 1 ) == 1 );
 			if ( data == 'k' ) {
@@ -656,7 +655,7 @@ Terminal::EVENT_TYPE Terminal::wait_for_input( int long timeout_ ) {
 				return ( EVENT_TYPE::RESIZE );
 			}
 		}
-		if ( FD_ISSET( 0, &fdSet ) ) {
+		if ( fds[0].revents & POLLIN ) {
 			return ( EVENT_TYPE::KEY_PRESS );
 		}
 	}
