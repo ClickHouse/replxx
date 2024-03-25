@@ -645,7 +645,6 @@ char const* Replxx::ReplxxImpl::input( std::string const& prompt ) {
 		}
 		if ( isUnsupportedTerm() ) {
 			dprintf( _out_fd, "%s", prompt.c_str() );
-			dprintf( _out_fd, "%s", "Hello ");
 			fdatasync( _out_fd );
 			return ( read_from_stdin() );
 		}
