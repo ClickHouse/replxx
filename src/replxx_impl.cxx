@@ -201,7 +201,7 @@ Replxx::ReplxxImpl::ReplxxImpl( std::istream & in_, std::ostream & out_, int in_
 	, _oldPos( 0 )
 	, _moveCursor( false )
 	, _ignoreCase( false )
-	, _mutex() 
+	, _mutex()
 	, _in(in_)
 	, _out(out_)
 	, _in_fd(in_fd_)
@@ -2595,4 +2595,3 @@ void Replxx::ReplxxImpl::dynamic_refresh(Prompt& oldPrompt, Prompt& newPrompt, c
 }
 
 }
-

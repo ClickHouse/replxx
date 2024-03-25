@@ -268,7 +268,7 @@ int Terminal::reset_raw_mode( void ) {
 #ifdef _WIN32
 	SetConsoleMode(
 		_consoleIn,
-		( _origInMode & ~( ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT ) ) | ENABLE_QUICK_EDIT_MODE 
+		( _origInMode & ~( ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT ) ) | ENABLE_QUICK_EDIT_MODE
 	);
 	SetConsoleCP( 65001 );
 	enable_out();
@@ -638,7 +638,7 @@ Terminal::EVENT_TYPE Terminal::wait_for_input( int long timeout_ ) {
 	int nfds( max( _interrupt[0], _interrupt[1] ) + 1 );
 	while ( true ) {
 		FD_ZERO( &fdSet );
-		FD_SET( 0, &fdSet );
+		FD_SET( _in_fd, &fdSet );
 		FD_SET( _interrupt[0], &fdSet );
 		timeval tv{ timeout_ / 1000, static_cast<suseconds_t>( ( timeout_ % 1000 ) * 1000 ) };
 		int err( select( nfds, &fdSet, nullptr, nullptr, timeout_ > 0 ? &tv : nullptr ) );
@@ -661,7 +661,7 @@ Terminal::EVENT_TYPE Terminal::wait_for_input( int long timeout_ ) {
 				return ( EVENT_TYPE::RESIZE );
 			}
 		}
-		if ( FD_ISSET( 0, &fdSet ) ) {
+		if ( FD_ISSET( _in_fd, &fdSet ) ) {
 			return ( EVENT_TYPE::KEY_PRESS );
 		}
 	}
@@ -687,10 +687,10 @@ void Terminal::clear_screen( CLEAR_SCREEN clearScreen_ ) {
 #endif
 		if ( clearScreen_ == CLEAR_SCREEN::WHOLE ) {
 			char const clearCode[] = "\033c\033[H\033[2J\033[0m";
-			static_cast<void>( write(1, clearCode, sizeof ( clearCode ) - 1) >= 0 );
+			static_cast<void>( write(_out_fd, clearCode, sizeof ( clearCode ) - 1) >= 0 );
 		} else {
 			char const clearCode[] = "\033[J";
-			static_cast<void>( write(1, clearCode, sizeof ( clearCode ) - 1) >= 0 );
+			static_cast<void>( write(_out_fd, clearCode, sizeof ( clearCode ) - 1) >= 0 );
 		}
 		return;
 #ifdef _WIN32
@@ -783,4 +783,3 @@ int Terminal::install_window_change_handler( void ) {
 #endif
 
 }
-
