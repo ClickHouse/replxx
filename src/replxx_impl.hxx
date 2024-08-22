@@ -158,8 +158,14 @@ private:
 	bool _moveCursor;
 	bool _ignoreCase;
 	mutable std::mutex _mutex;
+
+	std::istream & _in;
+	[[ maybe_unused ]] std::ostream & _out;
+	int _in_fd = 0;
+	int _out_fd = 1;
+	int _err_fd = 2;
 public:
-	ReplxxImpl( FILE*, FILE*, FILE* );
+	ReplxxImpl( std::istream & in_, std::ostream & out_, int in_fd_, int out_fd_, int err_fd_ );
 	virtual ~ReplxxImpl( void );
 	void set_modify_callback( Replxx::modify_callback_t const& fn );
 	void set_completion_callback( Replxx::completion_callback_t const& fn );

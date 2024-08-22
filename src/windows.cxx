@@ -99,6 +99,7 @@ T* HandleEsc(HANDLE out_, T* p, T* end) {
 
 int win_write( HANDLE out_, bool autoEscape_, char const* str_, int size_ ) {
 	int count( 0 );
+	/// FIXME: Replace this variable with function call passing an output descriptor as a parameter.
 	if ( tty::out ) {
 		DWORD nWritten( 0 );
 		if ( autoEscape_ ) {
