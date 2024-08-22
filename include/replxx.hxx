@@ -391,7 +391,7 @@ private:
 #endif
 
 public:
-	Replxx( void );
+	Replxx( std::istream & input_stream_, std::ostream & output_stream_, int in_fd_, int out_fd_, int err_fd_ );
 	Replxx( Replxx&& ) = default;
 	Replxx& operator = ( Replxx&& ) = default;
 

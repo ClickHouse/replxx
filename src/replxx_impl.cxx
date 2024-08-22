@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstdio>
 #include <memory>
 #include <cerrno>
 #include <iostream>
@@ -146,7 +147,7 @@ public:
 
 }
 
-Replxx::ReplxxImpl::ReplxxImpl( FILE*, FILE*, FILE* )
+Replxx::ReplxxImpl::ReplxxImpl( std::istream & in_, std::ostream & out_, int in_fd_, int out_fd_, int err_fd_ )
 	: _utf8Buffer()
 	, _data()
 	, _pos( 0 )
@@ -175,7 +176,7 @@ Replxx::ReplxxImpl::ReplxxImpl( FILE*, FILE*, FILE* )
 	, _indentMultiline( true )
 	, _namedActions()
 	, _keyPressHandlers()
-	, _terminal()
+	, _terminal(in_fd_, out_fd_)
 	, _currentThread()
 	, _prompt( _terminal )
 	, _completionCallback( nullptr )
@@ -200,7 +201,12 @@ Replxx::ReplxxImpl::ReplxxImpl( FILE*, FILE*, FILE* )
 	, _oldPos( 0 )
 	, _moveCursor( false )
 	, _ignoreCase( false )
-	, _mutex() {
+	, _mutex()
+	, _in(in_)
+	, _out(out_)
+	, _in_fd(in_fd_)
+	, _out_fd(out_fd_)
+	, _err_fd(err_fd_) {
 	using namespace std::placeholders;
 	_namedActions[action_names::INSERT_CHARACTER]                  = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::INSERT_CHARACTER,                  _1 );
 	_namedActions[action_names::NEW_LINE]                          = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::NEW_LINE,                          _1 );
@@ -608,8 +614,8 @@ void Replxx::ReplxxImpl::set_preload_buffer( std::string const& preloadText ) {
 
 char const* Replxx::ReplxxImpl::read_from_stdin( void ) {
 	if ( _preloadedBuffer.empty() ) {
-		getline( cin, _preloadedBuffer );
-		if ( ! cin.good() ) {
+		getline( _in, _preloadedBuffer );
+		if ( ! _in.good() ) {
 			return nullptr;
 		}
 	}
@@ -632,17 +638,17 @@ void Replxx::ReplxxImpl::emulate_key_press( char32_t keyCode_ ) {
 char const* Replxx::ReplxxImpl::input( std::string const& prompt ) {
 	try {
 		errno = 0;
-		if ( ! tty::in ) { // input not from a terminal, we should work with piped input, i.e. redirected stdin
+		if ( ! tty::is_a_tty(_in_fd) ) { // input not from a terminal, we should work with piped input, i.e. redirected stdin
 			return ( read_from_stdin() );
 		}
 		if ( ! _errorMessage.empty() ) {
-			printf( "%s", _errorMessage.c_str() );
-			fflush( stdout );
+			dprintf( _out_fd, "%s", _errorMessage.c_str() );
+			fdatasync( _out_fd );
 			_errorMessage.clear();
 		}
 		if ( isUnsupportedTerm() ) {
-			fprintf( stdout, "%s", prompt.c_str() );
-			fflush( stdout );
+			dprintf( _out_fd, "%s", prompt.c_str() );
+			fdatasync( _out_fd );
 			return ( read_from_stdin() );
 		}
 		std::unique_lock<std::mutex> l( _mutex );
@@ -978,7 +984,7 @@ Replxx::ReplxxImpl::paren_info_t Replxx::ReplxxImpl::matching_paren( void ) {
 
 int Replxx::ReplxxImpl::virtual_render( char32_t const* buffer_, int len_, int& xPos_, int& yPos_, Prompt const* prompt_ ) {
 	Prompt const& prompt( prompt_ ? *prompt_ : _prompt );
-	return ( replxx::virtual_render( buffer_, len_, xPos_, yPos_, prompt.screen_columns(), _indentMultiline ? prompt.indentation() : 0 ) );
+	return ( replxx::virtual_render( buffer_, len_, xPos_, yPos_, prompt.screen_columns(), _indentMultiline ? prompt.indentation() : 0 ), _out_fd);
 }
 
 /**
@@ -1146,7 +1152,7 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 
 	// if no completions, we are done
 	if ( _completions.empty() ) {
-		beep();
+		beep(_err_fd);
 		return 0;
 	}
 
@@ -1165,7 +1171,7 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 		longestCommonPrefix = longest_common_prefix( _completions, ignoreCase );
 	}
 	if ( _beepOnAmbiguousCompletion && ( completionsCount != 1 ) ) { // beep if ambiguous
-		beep();
+		beep(_err_fd);
 	}
 
 	// if we can extend the item, extend it and return to main loop
@@ -1229,8 +1235,8 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 		_pos = _data.length();
 		refresh_line();
 		_pos = savePos;
-		printf( "\nDisplay all %u possibilities? (y or n)", static_cast<unsigned int>( _completions.size() ) );
-		fflush(stdout);
+		dprintf(_out_fd, "\nDisplay all %u possibilities? (y or n)", static_cast<unsigned int>( _completions.size() ) );
+		fdatasync(_out_fd);
 		onNewLine = true;
 		while (c != 'y' && c != 'Y' && c != 'n' && c != 'N' && c != Replxx::KEY::control('C')) {
 			do {
@@ -1278,15 +1284,15 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 		size_t rowCount = (_completions.size() + columnCount - 1) / columnCount;
 		for (size_t row = 0; row < rowCount; ++row) {
 			if (row == pauseRow) {
-				printf("\n--More--");
-				fflush(stdout);
+				dprintf(_out_fd, "\n--More--");
+				fdatasync(_out_fd);
 				c = 0;
 				bool doBeep = false;
 				while (c != ' ' && c != Replxx::KEY::ENTER && c != 'y' && c != 'Y' &&
 							 c != 'n' && c != 'N' && c != 'q' && c != 'Q' &&
 							 c != Replxx::KEY::control('C')) {
 					if (doBeep) {
-						beep();
+						beep(_err_fd);
 					}
 					doBeep = true;
 					do {
@@ -1297,18 +1303,18 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 					case ' ':
 					case 'y':
 					case 'Y':
-						printf("\r				\r");
+						dprintf(_out_fd, "\r				\r");
 						pauseRow += _terminal.get_screen_rows() - 1;
 						break;
 					case Replxx::KEY::ENTER:
-						printf("\r				\r");
+						dprintf(_out_fd, "\r				\r");
 						++pauseRow;
 						break;
 					case 'n':
 					case 'N':
 					case 'q':
 					case 'Q':
-						printf("\r				\r");
+						dprintf(_out_fd, "\r				\r");
 						stopList = true;
 						break;
 					case Replxx::KEY::control('C'):
@@ -1329,7 +1335,7 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 				if ( index < _completions.size() ) {
 					Completion const& c( _completions[index] );
 					int itemLength = static_cast<int>(c.text().length());
-					fflush(stdout);
+					fdatasync(_out_fd);
 
 					if ( longestCommonPrefix > 0 ) {
 						static UnicodeString const col( ansi_color( Replxx::Color::BRIGHTMAGENTA ) );
@@ -1353,13 +1359,13 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 
 					if ( ((column + 1) * rowCount) + row < _completions.size() ) {
 						for ( int k( itemLength ); k < longestCompletion; ++k ) {
-							printf( " " );
+							dprintf(_out_fd,  " " );
 						}
 					}
 				}
 			}
 		}
-		fflush(stdout);
+		fdatasync(_out_fd);
 	}
 
 	// display the prompt on a new line, then redisplay the input buffer
@@ -1474,7 +1480,7 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::insert_character( char32_t c ) {
 	 * don't insert control characters
 	 */
 	if ( ( c >= static_cast<int>( Replxx::KEY::BASE ) ) || ( is_control_code( c ) && ( c != '\n' ) ) ) {
-		beep();
+		beep(_err_fd);
 		return ( Replxx::ACTION_RESULT::CONTINUE );
 	}
 	if ( ! _overwrite || ( _pos >= _data.length() ) ) {
@@ -1684,7 +1690,7 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::yank( char32_t ) {
 		_killRing.lastAction = KillRing::actionYank;
 		_lastYankSize = restoredText->length();
 	} else {
-		beep();
+		beep(_err_fd);
 	}
 	return ( Replxx::ACTION_RESULT::CONTINUE );
 }
@@ -1692,12 +1698,12 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::yank( char32_t ) {
 // meta-Y, "yank-pop", rotate popped text
 Replxx::ACTION_RESULT Replxx::ReplxxImpl::yank_cycle( char32_t ) {
 	if ( _killRing.lastAction != KillRing::actionYank ) {
-		beep();
+		beep(_err_fd);
 		return ( Replxx::ACTION_RESULT::CONTINUE );
 	}
 	UnicodeString* restoredText = _killRing.yankPop();
 	if ( !restoredText ) {
-		beep();
+		beep(_err_fd);
 		return ( Replxx::ACTION_RESULT::CONTINUE );
 	}
 	_pos -= _lastYankSize;
@@ -2314,7 +2320,7 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::incremental_history_search( char32_t s
 					_history.restore_pos();
 					historyLinePosition = _pos;
 				} else {
-					beep();
+					beep(_err_fd);
 				}
 			} break;
 
@@ -2326,7 +2332,7 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::incremental_history_search( char32_t s
 					dp._searchText.insert( dp._searchText.length(), c );
 					dp.updateSearchPrompt();
 				} else {
-					beep();
+					beep(_err_fd);
 				}
 			}
 		} // switch
@@ -2375,7 +2381,7 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::incremental_history_search( char32_t s
 					lineSearchPos = ( dp._direction > 0 ) ? 0 : ( activeHistoryLine.length() - dp._searchText.length() );
 				} else {
 					historyLinePosition = _pos;
-					beep();
+					beep(_err_fd);
 					break;
 				}
 			} // while
@@ -2426,7 +2432,7 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::bracketed_paste( char32_t ) {
 	static const UnicodeString BRACK_PASTE_SUFF( "\033[201~" );
 	static const int BRACK_PASTE_SLEN( BRACK_PASTE_SUFF.length() );
 	UnicodeString buf;
-	while ( char32_t c = read_unicode_character() ) {
+	while ( char32_t c = read_unicode_character(_in_fd) ) {
 		if ( ( c == '\r' ) || ( c == KEY::control( 'M' ) ) ) {
 			c = '\n';
 		}
