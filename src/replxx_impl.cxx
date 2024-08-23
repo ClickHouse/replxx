@@ -643,12 +643,12 @@ char const* Replxx::ReplxxImpl::input( std::string const& prompt ) {
 		}
 		if ( ! _errorMessage.empty() ) {
 			dprintf( _out_fd, "%s", _errorMessage.c_str() );
-			fdatasync( _out_fd );
+			fsync( _out_fd );
 			_errorMessage.clear();
 		}
 		if ( isUnsupportedTerm() ) {
 			dprintf( _out_fd, "%s", prompt.c_str() );
-			fdatasync( _out_fd );
+			fsync( _out_fd );
 			return ( read_from_stdin() );
 		}
 		std::unique_lock<std::mutex> l( _mutex );
@@ -1236,7 +1236,7 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 		refresh_line();
 		_pos = savePos;
 		dprintf(_out_fd, "\nDisplay all %u possibilities? (y or n)", static_cast<unsigned int>( _completions.size() ) );
-		fdatasync(_out_fd);
+		fsync(_out_fd);
 		onNewLine = true;
 		while (c != 'y' && c != 'Y' && c != 'n' && c != 'N' && c != Replxx::KEY::control('C')) {
 			do {
@@ -1285,7 +1285,7 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 		for (size_t row = 0; row < rowCount; ++row) {
 			if (row == pauseRow) {
 				dprintf(_out_fd, "\n--More--");
-				fdatasync(_out_fd);
+				fsync(_out_fd);
 				c = 0;
 				bool doBeep = false;
 				while (c != ' ' && c != Replxx::KEY::ENTER && c != 'y' && c != 'Y' &&
@@ -1335,7 +1335,7 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 				if ( index < _completions.size() ) {
 					Completion const& c( _completions[index] );
 					int itemLength = static_cast<int>(c.text().length());
-					fdatasync(_out_fd);
+					fsync(_out_fd);
 
 					if ( longestCommonPrefix > 0 ) {
 						static UnicodeString const col( ansi_color( Replxx::Color::BRIGHTMAGENTA ) );
@@ -1365,7 +1365,7 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 				}
 			}
 		}
-		fdatasync(_out_fd);
+		fsync(_out_fd);
 	}
 
 	// display the prompt on a new line, then redisplay the input buffer

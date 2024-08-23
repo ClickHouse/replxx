@@ -342,7 +342,7 @@ char32_t read_unicode_character(int in_fd_) {
 
 void beep(int fd_) {
 	dprintf(fd_, "\x7");	// ctrl-G == bell/beep
-	fdatasync(fd_);
+	fsync(fd_);
 }
 
 // replxx_read_char -- read a keystroke or keychord from the keyboard, and translate it
