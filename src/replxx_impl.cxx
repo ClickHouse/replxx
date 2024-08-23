@@ -642,12 +642,12 @@ char const* Replxx::ReplxxImpl::input( std::string const& prompt ) {
 			return ( read_from_stdin() );
 		}
 		if ( ! _errorMessage.empty() ) {
-			dprintf( _out_fd, "%s", _errorMessage.c_str() );
+			vdprintf( _out_fd, "%s", _errorMessage.c_str() );
 			fsync( _out_fd );
 			_errorMessage.clear();
 		}
 		if ( isUnsupportedTerm() ) {
-			dprintf( _out_fd, "%s", prompt.c_str() );
+			vdprintf( _out_fd, "%s", prompt.c_str() );
 			fsync( _out_fd );
 			return ( read_from_stdin() );
 		}
@@ -1235,7 +1235,7 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 		_pos = _data.length();
 		refresh_line();
 		_pos = savePos;
-		dprintf(_out_fd, "\nDisplay all %u possibilities? (y or n)", static_cast<unsigned int>( _completions.size() ) );
+		vdprintf(_out_fd, "\nDisplay all %u possibilities? (y or n)", static_cast<unsigned int>( _completions.size() ) );
 		fsync(_out_fd);
 		onNewLine = true;
 		while (c != 'y' && c != 'Y' && c != 'n' && c != 'N' && c != Replxx::KEY::control('C')) {
@@ -1284,7 +1284,7 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 		size_t rowCount = (_completions.size() + columnCount - 1) / columnCount;
 		for (size_t row = 0; row < rowCount; ++row) {
 			if (row == pauseRow) {
-				dprintf(_out_fd, "\n--More--");
+				vdprintf(_out_fd, "\n--More--");
 				fsync(_out_fd);
 				c = 0;
 				bool doBeep = false;
@@ -1303,18 +1303,18 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 					case ' ':
 					case 'y':
 					case 'Y':
-						dprintf(_out_fd, "\r				\r");
+						vdprintf(_out_fd, "\r				\r");
 						pauseRow += _terminal.get_screen_rows() - 1;
 						break;
 					case Replxx::KEY::ENTER:
-						dprintf(_out_fd, "\r				\r");
+						vdprintf(_out_fd, "\r				\r");
 						++pauseRow;
 						break;
 					case 'n':
 					case 'N':
 					case 'q':
 					case 'Q':
-						dprintf(_out_fd, "\r				\r");
+						vdprintf(_out_fd, "\r				\r");
 						stopList = true;
 						break;
 					case Replxx::KEY::control('C'):
@@ -1359,7 +1359,7 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 
 					if ( ((column + 1) * rowCount) + row < _completions.size() ) {
 						for ( int k( itemLength ); k < longestCompletion; ++k ) {
-							dprintf(_out_fd,  " " );
+							vdprintf(_out_fd,  " " );
 						}
 					}
 				}

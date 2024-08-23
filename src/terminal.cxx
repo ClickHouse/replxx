@@ -341,7 +341,7 @@ char32_t read_unicode_character(int in_fd_) {
 #endif // #ifndef _WIN32
 
 void beep(int fd_) {
-	dprintf(fd_, "\x7");	// ctrl-G == bell/beep
+	vdprintf(fd_, "\x7");	// ctrl-G == bell/beep
 	fsync(fd_);
 }
 
@@ -507,7 +507,7 @@ char32_t Terminal::read_char( void ) {
 #ifdef __REPLXX_DEBUG__
 	if (c == ctrlChar('^')) {	// ctrl-^, special debug mode, prints all keys hit,
 														 // ctrl-C to get out
-		dprintf(_out_fd,
+		vdprintf(_out_fd,
 				"\nEntering keyboard debugging mode (on ctrl-^), press ctrl-C to exit "
 				"this mode\n");
 		while (true) {
@@ -515,7 +515,7 @@ char32_t Terminal::read_char( void ) {
 			int ret = read(0, keys, 10);
 
 			if (ret <= 0) {
-				dprintf(_out_fd,"\nret: %d\n", ret);
+				vdprintf(_out_fd,"\nret: %d\n", ret);
 			}
 			for (int i = 0; i < ret; ++i) {
 				char32_t key = static_cast<char32_t>(keys[i]);
@@ -543,13 +543,13 @@ char32_t Terminal::read_char( void ) {
 					friendlyTextBuf[2] = 0;
 					friendlyTextPtr = friendlyTextBuf;
 				}
-				dprintf(_out_fd,"%d x%02X (%s%s)	", key, key, prefixText, friendlyTextPtr);
+				vdprintf(_out_fd,"%d x%02X (%s%s)	", key, key, prefixText, friendlyTextPtr);
 			}
-			dprintf(_out_fd,"\x1b[1G\n");	// go to first column of new line
+			vdprintf(_out_fd,"\x1b[1G\n");	// go to first column of new line
 
 			// drop out of this loop on ctrl-C
 			if (keys[0] == ctrlChar('C')) {
-				dprintf(_out_fd,"Leaving keyboard debugging mode (on ctrl-C)\n");
+				vdprintf(_out_fd,"Leaving keyboard debugging mode (on ctrl-C)\n");
 				fflush(stdout);
 				return -2;
 			}

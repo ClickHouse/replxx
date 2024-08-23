@@ -683,7 +683,7 @@ int replxx_history_size( ::Replxx* replxx_ ) {
 void replxx_debug_dump_print_codes(void) {
 	char quit[4];
 
-	dprintf(_out_fd,
+	vdprintf(_out_fd,
 			"replxx key codes debugging mode.\n"
 			"Press keys to see scan codes. Type 'quit' at any time to exit.\n");
 	if (enableRawMode() == -1) return;
@@ -702,9 +702,9 @@ void replxx_debug_dump_print_codes(void) {
 		quit[sizeof(quit) - 1] = c; /* Insert current char on the right. */
 		if (memcmp(quit, "quit", sizeof(quit)) == 0) break;
 
-		dprintf(_out_fd,"'%c' %02x (%d) (type quit to exit)\n", isprint(c) ? c : '?', (int)c,
+		vdprintf(_out_fd,"'%c' %02x (%d) (type quit to exit)\n", isprint(c) ? c : '?', (int)c,
 					 (int)c);
-		dprintf(_out_fd,"\r"); /* Go left edge manually, we are in raw mode. */
+		vdprintf(_out_fd,"\r"); /* Go left edge manually, we are in raw mode. */
 		fflush(stdout);
 	}
 	disableRawMode();
@@ -740,4 +740,3 @@ ReplxxColor replxx_color_grayscale( int level_ ) {
 ReplxxColor replxx_color_rgb666( int r_, int g_, int b_ ) {
 	return static_cast<ReplxxColor>( color::rgb666( r_, g_, b_ ) );
 }
-
