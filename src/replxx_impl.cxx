@@ -877,9 +877,8 @@ void Replxx::ReplxxImpl::handle_hints( HINT_ACTION hintAction_ ) {
 #endif
 		startCol -= _hintContextLenght;
 		if ( startCol >= maxCol ) {
-                    startCol = startCol % maxCol;
-                }
-
+        	startCol = startCol % maxCol;
+        }
 		if ( _hintSelection < -1 ) {
 			_hintSelection = hintCount - 1;
 		} else if ( _hintSelection >= hintCount ) {
