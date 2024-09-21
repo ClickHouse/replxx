@@ -875,6 +875,10 @@ void Replxx::ReplxxImpl::handle_hints( HINT_ACTION hintAction_ ) {
 #ifdef _WIN32
 		-- maxCol;
 #endif
+		startCol -= _hintContextLenght;
+		if ( startCol >= maxCol ) {
+        	startCol = startCol % maxCol;
+        }
 		if ( _hintSelection < -1 ) {
 			_hintSelection = hintCount - 1;
 		} else if ( _hintSelection >= hintCount ) {
@@ -891,7 +895,6 @@ void Replxx::ReplxxImpl::handle_hints( HINT_ACTION hintAction_ ) {
 				set_color( Replxx::Color::DEFAULT );
 			}
 		}
-		startCol -= _hintContextLenght;
 		for ( int hintRow( 0 ); hintRow < min( hintCount, _maxHintRows ); ++ hintRow ) {
 #ifdef _WIN32
 			_display.push_back( '\r' );
@@ -918,6 +921,7 @@ void Replxx::ReplxxImpl::handle_hints( HINT_ACTION hintAction_ ) {
 			set_color( Replxx::Color::DEFAULT );
 		}
 	}
+	set_color(Replxx::Color::DEFAULT);
 	return;
 }
 
@@ -1080,7 +1084,7 @@ void Replxx::ReplxxImpl::repaint( void ) {
 	for ( int i( _prompt._extraLines ); i < _prompt._cursorRowOffset; ++ i ) {
 		_terminal.write8( "\n", 1 );
 	}
-	refresh_line( HINT_ACTION::SKIP );
+	refresh_line( HINT_ACTION::REPAINT );
 }
 
 void Replxx::ReplxxImpl::clear_self_to_end_of_screen( Prompt const* prompt_ ) {
