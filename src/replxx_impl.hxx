@@ -200,6 +200,8 @@ public:
 	int install_window_change_handler( void );
 	void enable_bracketed_paste( void );
 	void disable_bracketed_paste( void );
+	void enable_mouse_tracking( void );
+	void disable_mouse_tracking( void );
 	void print( char const*, int );
 	void set_prompt( std::string prompt );
 	Replxx::ACTION_RESULT clear_screen( char32_t );
@@ -274,6 +276,8 @@ private:
 	Replxx::ACTION_RESULT incremental_history_search( char32_t startChar );
 	Replxx::ACTION_RESULT common_prefix_search( char32_t startChar );
 	Replxx::ACTION_RESULT bracketed_paste( char32_t startChar );
+	Replxx::ACTION_RESULT handle_mouse_click( char32_t );
+	int screen_to_buffer_position( int clickX, int clickY );
 	char32_t read_char( HINT_ACTION = HINT_ACTION::SKIP );
 	char const* read_from_stdin( void );
 	char32_t do_complete_line( bool );

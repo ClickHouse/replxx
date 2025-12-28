@@ -40,6 +40,15 @@ namespace EscapeSequenceProcessing { // move these out of global namespace
 
 static char32_t thisKeyMetaCtrl = 0;	// holds pre-set Meta and/or Ctrl modifiers
 
+// Mouse click coordinates from SGR mouse events
+static int mouseClickX = 0;
+static int mouseClickY = 0;
+static int mouseClickButton = 0;
+
+int getMouseClickX() { return mouseClickX; }
+int getMouseClickY() { return mouseClickY; }
+int getMouseClickButton() { return mouseClickButton; }
+
 // This dispatch routine is given a dispatch table and then farms work out to
 // routines
 // listed in the table based on the character it is called with.	The dispatch
@@ -808,6 +817,67 @@ static char32_t escLeftBracket9Routine(int in_fd_, int err_fd_, char32_t c) {
 	return escFailureRoutine(in_fd_, err_fd_, c);
 }
 
+// Parse SGR mouse sequence: ESC[<button;x;yM (press) or ESC[<button;x;ym (release)
+// This handles the '<' character after ESC[
+static char32_t mouseSequenceRoutine(int in_fd_, int err_fd_, char32_t) {
+	int button = 0;
+	int x = 0;
+	int y = 0;
+	char32_t c;
+
+	// Read button number until ';'
+	while (true) {
+		c = read_unicode_character(in_fd_);
+		if (c == 0) return 0;
+		if (c == ';') break;
+		if (c >= '0' && c <= '9') {
+			button = button * 10 + (c - '0');
+		} else {
+			return escFailureRoutine(in_fd_, err_fd_, c);
+		}
+	}
+
+	// Read x coordinate until ';'
+	while (true) {
+		c = read_unicode_character(in_fd_);
+		if (c == 0) return 0;
+		if (c == ';') break;
+		if (c >= '0' && c <= '9') {
+			x = x * 10 + (c - '0');
+		} else {
+			return escFailureRoutine(in_fd_, err_fd_, c);
+		}
+	}
+
+	// Read y coordinate until 'M' (press) or 'm' (release)
+	while (true) {
+		c = read_unicode_character(in_fd_);
+		if (c == 0) return 0;
+		if (c == 'M' || c == 'm') break;
+		if (c >= '0' && c <= '9') {
+			y = y * 10 + (c - '0');
+		} else {
+			return escFailureRoutine(in_fd_, err_fd_, c);
+		}
+	}
+
+	// Only handle release events ('m'), ignore press ('M')
+	// This preserves the terminal's native text selection behavior
+	// Only handle left click (button & 0x03 == 0)
+	if (c == 'M' || (button & 0x03) != 0) {
+		// Ignore press events and non-left-clicks
+		// Return -1 to continue reading (0 would be interpreted as EOF)
+		return -1;
+	}
+
+	// Store coordinates for retrieval
+	mouseClickX = x;
+	mouseClickY = y;
+	mouseClickButton = button & 0x03;
+
+	return Replxx::KEY::MOUSE;
+}
+
 // Handle ESC [ <more stuff> escape sequences
 //
 static CharacterDispatchRoutine escLeftBracketRoutines[] = {
@@ -817,9 +887,11 @@ static CharacterDispatchRoutine escLeftBracketRoutines[] = {
 	escLeftBracket0Routine, escLeftBracket1Routine, escLeftBracket2Routine,
 	escLeftBracket3Routine, escLeftBracket4Routine, escLeftBracket5Routine,
 	escLeftBracket6Routine, escLeftBracket7Routine, escLeftBracket8Routine,
-	escLeftBracket9Routine, escFailureRoutine
+	escLeftBracket9Routine,
+	mouseSequenceRoutine,   // Handle '<' for SGR mouse sequences
+	escFailureRoutine
 };
-static CharacterDispatch escLeftBracketDispatch = {17, "ABCDHFZ0123456789",
+static CharacterDispatch escLeftBracketDispatch = {18, "ABCDHFZ0123456789<",
 																									 escLeftBracketRoutines};
 
 // Handle ESC O <char> escape sequences

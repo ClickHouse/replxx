@@ -36,6 +36,7 @@
 #include "terminal.hxx"
 #include "history.hxx"
 #include "replxx.hxx"
+#include "escape.hxx"
 
 using namespace std;
 using namespace replxx::color;
@@ -338,6 +339,9 @@ Replxx::ReplxxImpl::ReplxxImpl( std::istream & in_, std::ostream & out_, int in_
 	bind_key( Replxx::KEY::meta( 'n' ),                    _namedActions.at( action_names::HISTORY_COMMON_PREFIX_SEARCH ) );
 	bind_key( Replxx::KEY::meta( 'N' ),                    _namedActions.at( action_names::HISTORY_COMMON_PREFIX_SEARCH ) );
 	bind_key( Replxx::KEY::PASTE_START,                    std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::BRACKETED_PASTE, _1 ) );
+#ifndef _WIN32
+	bind_key( Replxx::KEY::MOUSE,                          std::bind( &ReplxxImpl::handle_mouse_click, this, _1 ) );
+#endif
 }
 
 Replxx::ReplxxImpl::~ReplxxImpl( void ) {
@@ -718,6 +722,14 @@ void Replxx::ReplxxImpl::disable_bracketed_paste( void ) {
 	_bracketedPaste = false;
 }
 
+void Replxx::ReplxxImpl::enable_mouse_tracking( void ) {
+	_terminal.enable_mouse_tracking();
+}
+
+void Replxx::ReplxxImpl::disable_mouse_tracking( void ) {
+	_terminal.disable_mouse_tracking();
+}
+
 void Replxx::ReplxxImpl::print( char const* str_, int size_ ) {
 	std::unique_lock<std::mutex> l( _mutex );
 	if ( ( _currentThread == std::thread::id() ) || ( _currentThread == std::this_thread::get_id() ) ) {
@@ -1072,6 +1084,132 @@ void Replxx::ReplxxImpl::move_cursor( void ) {
 	_oldPos = _pos;
 	_moveCursor = false;
 }
+
+int mk_wcwidth( char32_t );
+
+// Convert screen coordinates (x, y) to buffer position
+// This is the inverse of virtual_render
+int Replxx::ReplxxImpl::screen_to_buffer_position( int clickX, int clickY ) {
+	int screenColumns = _terminal.get_screen_columns();
+	int promptIndent = _indentMultiline ? _prompt.indentation() : 0;
+
+	// Convert from 1-based (terminal) to 0-based
+	int targetX = clickX - 1;
+
+	// Calculate where our cursor currently is in content-relative coordinates
+	int cursorScreenX = _prompt.indentation();
+	int cursorScreenY = 0;
+	virtual_render( _data.get(), _pos, cursorScreenX, cursorScreenY );
+
+	// For Y coordinate: Calculate which content row we clicked on.
+	// First, find the total number of content rows by walking the buffer.
+	int totalContentRows = 0;
+	{
+		int tempX = _prompt.indentation();
+		int tempY = 0;
+		char32_t const* data = _data.get();
+		int dataLen = _data.length();
+		for ( int i = 0; i < dataLen; ++i ) {
+			char32_t c = data[i];
+			if ( c == '\n' ) {
+				tempY++;
+				tempX = promptIndent;
+			} else {
+				int cw = mk_wcwidth( c );
+				if ( cw < 0 ) cw = 1;
+				if ( tempX + cw > screenColumns ) {
+					tempY++;
+					tempX = 0;
+				}
+				tempX += cw;
+			}
+		}
+		totalContentRows = tempY;
+	}
+
+	// The cursor is at content row cursorScreenY and terminal row _prompt._cursorRowOffset (relative to prompt start)
+	// Click at terminal row (clickY - 1) relative to prompt start maps to:
+	// contentY = (clickY - 1) - (_prompt._cursorRowOffset - cursorScreenY)
+	// Simplified: contentY = cursorScreenY + ((clickY - 1) - _prompt._cursorRowOffset)
+	int contentY = cursorScreenY + ( (clickY - 1) - _prompt._cursorRowOffset );
+
+	// Clamp contentY to valid range
+	if ( contentY < 0 ) {
+		contentY = 0;
+	}
+	if ( contentY > totalContentRows ) {
+		contentY = totalContentRows;
+	}
+
+	// Walk through buffer tracking screen position
+	int curX = _prompt.indentation();
+	int curY = 0;
+	int dataLen = _data.length();
+	char32_t const* data = _data.get();
+
+	for ( int bufPos = 0; bufPos <= dataLen; ++bufPos ) {
+		// Check if we've reached or passed the target position
+		if ( curY > contentY || ( curY == contentY && curX >= targetX ) ) {
+			return bufPos;
+		}
+
+		if ( bufPos >= dataLen ) {
+			return dataLen;
+		}
+
+		char32_t c = data[bufPos];
+
+		if ( c == '\n' ) {
+			// If click is on this line but past current position, stay at end of line
+			if ( curY == contentY ) {
+				return bufPos;
+			}
+			curY++;
+			curX = promptIndent;
+			continue;
+		}
+
+		// Calculate character width
+		int charWidth = mk_wcwidth( c );
+		if ( charWidth < 0 ) {
+			charWidth = 1;
+		}
+
+		// Handle line wrap
+		if ( curX + charWidth > screenColumns ) {
+			curY++;
+			curX = 0;
+			// If we just wrapped past the target line
+			if ( curY > contentY ) {
+				return bufPos;
+			}
+		}
+
+		curX += charWidth;
+	}
+
+	return dataLen;
+}
+
+#ifndef _WIN32
+Replxx::ACTION_RESULT Replxx::ReplxxImpl::handle_mouse_click( char32_t ) {
+	// Get mouse coordinates from escape sequence parsing
+	int clickX = EscapeSequenceProcessing::getMouseClickX();
+	int clickY = EscapeSequenceProcessing::getMouseClickY();
+
+	// Convert screen position to buffer position
+	int newPos = screen_to_buffer_position( clickX, clickY );
+
+	// Validate and apply the new position
+	if ( newPos >= 0 && newPos <= _data.length() ) {
+		_pos = newPos;
+		// Trigger cursor movement display update (like MOVE_CURSOR trait does)
+		_moveCursor = ( _pos != _oldPos );
+	}
+
+	return ( Replxx::ACTION_RESULT::CONTINUE );
+}
+#endif
 
 int Replxx::ReplxxImpl::context_length() {
 	int prefixLength = _pos;

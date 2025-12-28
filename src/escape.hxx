@@ -29,6 +29,11 @@ struct CharacterDispatch {
 
 char32_t doDispatch(int in_fd_, int err_fd, char32_t c);
 
+// Mouse click coordinate getters (set by SGR mouse sequence parsing)
+int getMouseClickX();
+int getMouseClickY();
+int getMouseClickButton();
+
 }
 
 }

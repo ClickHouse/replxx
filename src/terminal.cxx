@@ -213,6 +213,18 @@ void Terminal::disable_bracketed_paste( void ) {
 	write8( BRACK_PASTE_DISABLE, sizeof ( BRACK_PASTE_DISABLE ) - 1 );
 }
 
+void Terminal::enable_mouse_tracking( void ) {
+	// Enable basic mouse tracking (mode 1000) + SGR extended format (mode 1006)
+	// SGR format: ESC[<button;x;yM (press) or ESC[<button;x;ym (release)
+	static char const MOUSE_ENABLE[] = "\033[?1000h\033[?1006h";
+	write8( MOUSE_ENABLE, sizeof( MOUSE_ENABLE ) - 1 );
+}
+
+void Terminal::disable_mouse_tracking( void ) {
+	static char const MOUSE_DISABLE[] = "\033[?1006l\033[?1000l";
+	write8( MOUSE_DISABLE, sizeof( MOUSE_DISABLE ) - 1 );
+}
+
 int Terminal::enable_raw_mode( void ) {
 	if ( _rawMode ) {
 		return ( 0 );

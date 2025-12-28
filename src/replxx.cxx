@@ -286,6 +286,14 @@ void Replxx::disable_bracketed_paste( void ) {
 	_impl->disable_bracketed_paste();
 }
 
+void Replxx::enable_mouse_tracking( void ) {
+	_impl->enable_mouse_tracking();
+}
+
+void Replxx::disable_mouse_tracking( void ) {
+	_impl->disable_mouse_tracking();
+}
+
 void Replxx::print( char const* format_, ... ) {
 	::std::va_list ap;
 	va_start( ap, format_ );

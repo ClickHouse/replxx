@@ -61,6 +61,8 @@ public:
 	int get_screen_rows(void);
 	void enable_bracketed_paste( void );
 	void disable_bracketed_paste( void );
+	void enable_mouse_tracking( void );
+	void disable_mouse_tracking( void );
 	int enable_raw_mode(void);
 	int reset_raw_mode(void);
 	void disable_raw_mode(void);
