@@ -901,6 +901,38 @@ void Replxx::ReplxxImpl::handle_hints( HINT_ACTION hintAction_ ) {
 		} else if ( _hintSelection >= hintCount ) {
 			_hintSelection = -1;
 		}
+		// If there are lines below the cursor, show the hint list right under the cursor's line
+		// (temporarily covering the lines below) instead of below the whole input. Truncate the
+		// rendered display to the end of the cursor's line; the lines below are redrawn once the
+		// hints are gone.
+		bool cursorOnLastLine( true );
+		for ( int i( _pos ); i < _data.length(); ++ i ) {
+			if ( _data[i] == '\n' ) {
+				cursorOnLastLine = false;
+				break;
+			}
+		}
+		if ( ! cursorOnLastLine ) {
+			int cursorLine( 0 );
+			for ( int i( 0 ); i < _pos; ++ i ) {
+				if ( _data[i] == '\n' ) {
+					++ cursorLine;
+				}
+			}
+			int newlinesSeen( 0 );
+			int cut( static_cast<int>( _display.size() ) );
+			for ( int i( 0 ); i < static_cast<int>( _display.size() ); ++ i ) {
+				if ( _display[i] == '\n' ) {
+					++ newlinesSeen;
+					if ( newlinesSeen == cursorLine + 1 ) {
+						cut = i;
+						break;
+					}
+				}
+			}
+			_display.erase( _display.begin() + cut, _display.end() );
+			_displayInputLength = cut;
+		}
 		if ( atEnd ) {
 			// At the end of the line: the selected hint is shown inline (as the ghost suffix)
 			// and the list below scrolls through the remaining hints.
