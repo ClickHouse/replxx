@@ -901,41 +901,68 @@ void Replxx::ReplxxImpl::handle_hints( HINT_ACTION hintAction_ ) {
 		} else if ( _hintSelection >= hintCount ) {
 			_hintSelection = -1;
 		}
-		if ( atEnd && ( _hintSelection != -1 ) ) {
-			_hint = _hintsCache[_hintSelection];
-			int len( min<int>( _hint.length(), maxCol - ( startCol - _hintContextLenght ) ) );
-			if ( _hintContextLenght < len ) {
+		if ( atEnd ) {
+			// At the end of the line: the selected hint is shown inline (as the ghost suffix)
+			// and the list below scrolls through the remaining hints.
+			if ( _hintSelection != -1 ) {
+				_hint = _hintsCache[_hintSelection];
+				int len( min<int>( _hint.length(), maxCol - ( startCol - _hintContextLenght ) ) );
+				if ( _hintContextLenght < len ) {
+					set_color( _hintColor );
+					for ( int i( _hintContextLenght ); i < len; ++ i ) {
+						_display.push_back( _hint[i] );
+					}
+					set_color( Replxx::Color::DEFAULT );
+				}
+			}
+			for ( int hintRow( 0 ); hintRow < min( hintCount, _maxHintRows ); ++ hintRow ) {
+#ifdef _WIN32
+				_display.push_back( '\r' );
+#endif
+				_display.push_back( '\n' );
+				int col( 0 );
+				for ( int i( 0 ); ( i < startCol ) && ( col < maxCol ); ++ i, ++ col ) {
+					_display.push_back( ' ' );
+				}
 				set_color( _hintColor );
-				for ( int i( _hintContextLenght ); i < len; ++ i ) {
-					_display.push_back( _hint[i] );
+				int hintNo( hintRow + _hintSelection + 1 );
+				if ( hintNo == hintCount ) {
+					for ( int i( _pos - _hintContextLenght ); ( i < _pos ) && ( col < maxCol ); ++ i, ++ col ) {
+						_display.push_back( _data[i] );
+					}
+					continue;
+				} else if ( hintNo > hintCount ) {
+					-- hintNo;
+				}
+				UnicodeString const& h( _hintsCache[hintNo % hintCount] );
+				for ( int i( 0 ); ( i < h.length() ) && ( col < maxCol ); ++ i, ++ col ) {
+					_display.push_back( h[i] );
 				}
 				set_color( Replxx::Color::DEFAULT );
 			}
-		}
-		for ( int hintRow( 0 ); hintRow < min( hintCount, _maxHintRows ); ++ hintRow ) {
+		} else {
+			// In the middle of the line the ghost suffix cannot be shown inline (it would shift
+			// the text after the cursor), so show the candidates as a plain list below the cursor
+			// with the selected one highlighted. The window scrolls to keep the selection visible.
+			int rows( min( hintCount, _maxHintRows ) );
+			int first( _hintSelection >= rows ? _hintSelection - rows + 1 : 0 );
+			for ( int hintRow( 0 ); hintRow < rows; ++ hintRow ) {
 #ifdef _WIN32
-			_display.push_back( '\r' );
+				_display.push_back( '\r' );
 #endif
-			_display.push_back( '\n' );
-			int col( 0 );
-			for ( int i( 0 ); ( i < startCol ) && ( col < maxCol ); ++ i, ++ col ) {
-				_display.push_back( ' ' );
-			}
-			set_color( _hintColor );
-			int hintNo( hintRow + _hintSelection + 1 );
-			if ( hintNo == hintCount ) {
-				for ( int i( _pos - _hintContextLenght ); ( i < _pos ) && ( col < maxCol ); ++ i, ++ col ) {
-					_display.push_back( _data[i] );
+				_display.push_back( '\n' );
+				int col( 0 );
+				for ( int i( 0 ); ( i < startCol ) && ( col < maxCol ); ++ i, ++ col ) {
+					_display.push_back( ' ' );
 				}
-				continue;
-			} else if ( hintNo > hintCount ) {
-				-- hintNo;
+				int idx( first + hintRow );
+				set_color( idx == _hintSelection ? Replxx::Color::DEFAULT : _hintColor );
+				UnicodeString const& h( _hintsCache[idx] );
+				for ( int i( 0 ); ( i < h.length() ) && ( col < maxCol ); ++ i, ++ col ) {
+					_display.push_back( h[i] );
+				}
+				set_color( Replxx::Color::DEFAULT );
 			}
-			UnicodeString const& h( _hintsCache[hintNo % hintCount] );
-			for ( int i( 0 ); ( i < h.length() ) && ( col < maxCol ); ++ i, ++ col ) {
-				_display.push_back( h[i] );
-			}
-			set_color( Replxx::Color::DEFAULT );
 		}
 	}
 	set_color(Replxx::Color::DEFAULT);
