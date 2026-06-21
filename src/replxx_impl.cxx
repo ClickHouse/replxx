@@ -852,7 +852,11 @@ void Replxx::ReplxxImpl::handle_hints( HINT_ACTION hintAction_ ) {
 	if ( ( hintAction_ == HINT_ACTION::SKIP ) || ( hintAction_ == HINT_ACTION::TRIM ) ) {
 		return;
 	}
-	if ( _pos != _data.length() ) {
+	bool atEnd( _pos == _data.length() );
+	// Show hints at the end of the line, or in the middle right after an identifier-like
+	// fragment: the cursor must sit at a word boundary (the next character is a word break)
+	// with a non-empty word right before it.
+	if ( ! atEnd && ( ( context_length() == 0 ) || ! is_word_break_character<false>( _data[_pos] ) ) ) {
 		return;
 	}
 	_hint = UnicodeString();
@@ -868,7 +872,10 @@ void Replxx::ReplxxImpl::handle_hints( HINT_ACTION hintAction_ ) {
 		_hintsCache = call_hinter( _utf8Buffer.get(), _hintContextLenght, _hintColor );
 	}
 	int hintCount( static_cast<int>( _hintsCache.size() ) );
-	if ( hintCount == 1 ) {
+	// The inline "ghost" suffix can only be appended after the whole input, so it is shown only
+	// at the end of the line. In the middle of the line the suggestions are shown as the list
+	// below the cursor instead (which does not disturb the text after the cursor).
+	if ( atEnd && hintCount == 1 ) {
 		_hint = _hintsCache.front();
 		int len( _hint.length() - _hintContextLenght );
 		if ( len > 0 ) {
@@ -894,7 +901,7 @@ void Replxx::ReplxxImpl::handle_hints( HINT_ACTION hintAction_ ) {
 		} else if ( _hintSelection >= hintCount ) {
 			_hintSelection = -1;
 		}
-		if ( _hintSelection != -1 ) {
+		if ( atEnd && ( _hintSelection != -1 ) ) {
 			_hint = _hintsCache[_hintSelection];
 			int len( min<int>( _hint.length(), maxCol - ( startCol - _hintContextLenght ) ) );
 			if ( _hintContextLenght < len ) {
