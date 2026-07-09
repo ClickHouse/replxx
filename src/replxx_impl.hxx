@@ -213,6 +213,7 @@ public:
 	Replxx::State get_state( void ) const;
 	void set_state( Replxx::State const& );
 	void set_ignore_case( bool val );
+	int prompt_indentation( void );
 private:
 	ReplxxImpl( ReplxxImpl const& ) = delete;
 	ReplxxImpl& operator = ( ReplxxImpl const& ) = delete;

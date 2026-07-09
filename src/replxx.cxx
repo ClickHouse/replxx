@@ -275,6 +275,10 @@ void Replxx::bind_key_internal( char32_t keyPress_, char const* actionName_, int
 	_impl->bind_key_internal( keyPress_, actionName_, editingMode_ );
 }
 
+int Replxx::prompt_indentation( void ) {
+	return _impl->prompt_indentation();
+}
+
 Replxx::State Replxx::get_state( void ) const {
 	return ( _impl->get_state() );
 }

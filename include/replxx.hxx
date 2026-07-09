@@ -610,6 +610,8 @@ public:
 
 	void set_subword_break_characters( char const* wordBreakers );
 
+	int prompt_indentation( void );
+
 	/*! \brief How many completions should trigger pagination.
 	 */
 	void set_completion_count_cutoff( int count );
