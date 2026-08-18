@@ -255,6 +255,10 @@ Replxx::ACTION_RESULT Replxx::invoke( ACTION action_, char32_t keyPress_ ) {
 	return ( _impl->invoke( action_, keyPress_ ) );
 }
 
+bool Replxx::history_recalled( void ) const {
+	return ( _impl->history_recalled() );
+}
+
 void Replxx::bind_key( char32_t keyPress_, key_press_handler_t handler_ ) {
 	_impl->bind_key( keyPress_, handler_ );
 }
@@ -745,4 +749,3 @@ ReplxxColor replxx_color_grayscale( int level_ ) {
 ReplxxColor replxx_color_rgb666( int r_, int g_, int b_ ) {
 	return static_cast<ReplxxColor>( color::rgb666( r_, g_, b_ ) );
 }
-

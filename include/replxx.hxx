@@ -514,6 +514,8 @@ public:
 	 * \return The action result informing the replxx what shall happen next.
 	 */
 	ACTION_RESULT invoke( ACTION action, char32_t code );
+	/*! \brief Did the most recently invoked history action accept a history entry? */
+	bool history_recalled( void ) const;
 
 	/*! \brief Bind user defined action to handle given key-press event.
 	 *
@@ -729,4 +731,3 @@ Replxx::Color rgb666( int red, int green, int blue );
 }
 
 #endif /* HAVE_REPLXX_HXX_INCLUDED */
-

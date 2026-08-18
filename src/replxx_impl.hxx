@@ -155,6 +155,7 @@ private:
 	int _hintContextLenght;
 	Utf8String _hintSeed;
 	bool _hasNewlines;
+	bool _historyRecalled;
 	int _oldPos;
 	bool _moveCursor;
 	bool _ignoreCase;
@@ -205,6 +206,7 @@ public:
 	Replxx::ACTION_RESULT clear_screen( char32_t );
 	void emulate_key_press( char32_t );
 	Replxx::ACTION_RESULT invoke( Replxx::ACTION, char32_t );
+	bool history_recalled( void ) const;
 	void bind_key( char32_t, Replxx::key_press_handler_t );
 	void bind_key_internal( char32_t, char const* );
 	Replxx::State get_state( void ) const;
@@ -309,4 +311,3 @@ private:
 }
 
 #endif
-
