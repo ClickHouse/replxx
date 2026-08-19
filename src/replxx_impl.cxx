@@ -358,6 +358,8 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::invoke( Replxx::ACTION action_, char32
 		|| ( action_ == Replxx::ACTION::HISTORY_PREVIOUS )
 		|| ( action_ == Replxx::ACTION::HISTORY_FIRST )
 		|| ( action_ == Replxx::ACTION::HISTORY_LAST )
+		|| ( action_ == Replxx::ACTION::HISTORY_RESTORE_CURRENT )
+		|| ( action_ == Replxx::ACTION::HISTORY_RESTORE )
 		|| ( action_ == Replxx::ACTION::HISTORY_INCREMENTAL_SEARCH )
 		|| ( action_ == Replxx::ACTION::HISTORY_SEEDED_INCREMENTAL_SEARCH )
 		|| ( action_ == Replxx::ACTION::HISTORY_COMMON_PREFIX_SEARCH )
@@ -2075,6 +2077,8 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::history_restore_current( char32_t ) {
 		_history.reset_current_scratch();
 		_data.assign( _history.current() );
 		_pos = _data.length();
+		_historyRecalled = true;
+		_hintContextLenght = -1;
 		refresh_line();
 	}
 	return ( Replxx::ACTION_RESULT::CONTINUE );
@@ -2087,6 +2091,8 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::history_restore( char32_t ) {
 	if ( ! _history.is_last() ) {
 		_data.assign( _history.current() );
 		_pos = _data.length();
+		_historyRecalled = true;
+		_hintContextLenght = -1;
 		refresh_line();
 	}
 	return ( Replxx::ACTION_RESULT::CONTINUE );
