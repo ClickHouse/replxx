@@ -770,6 +770,10 @@ void Replxx::ReplxxImpl::set_prompt( std::string prompt ) {
 void Replxx::ReplxxImpl::preload_puffer(const char* preloadText) {
 	_data.assign( preloadText );
 	_prefix = _pos = _data.length();
+	// The hint cache (_hintSeed/_hintsCache) survives across prompts, so a preloaded line that is
+	// byte-for-byte equal to the previously displayed one would reuse the stale cache without ever
+	// invoking the hint callback. Invalidate it so the callback always sees the preloaded line.
+	_hintContextLenght = -1;
 }
 
 void Replxx::ReplxxImpl::set_color( Replxx::Color color_ ) {
