@@ -2323,7 +2323,10 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::incremental_history_search( char32_t s
 			case Replxx::KEY::meta( '<' ): // start of history
 			case Replxx::KEY::PAGE_UP:
 			case Replxx::KEY::meta( '>' ): // end of history
-			case Replxx::KEY::PAGE_DOWN: {
+			case Replxx::KEY::PAGE_DOWN:
+			// ctrl-Z, job control: leave the search and let the main loop handle the key,
+			// so that it goes through the key binding (which may disable suspending).
+			case Replxx::KEY::control('Z'): {
 				keepLooping = false;
 			} break;
 
@@ -2356,21 +2359,6 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::incremental_history_search( char32_t s
 					searchAgain = true; // same direction, search again
 				}
 			} break;
-
-// job control is its own thing
-#ifndef _WIN32
-			case Replxx::KEY::control('Z'): { // ctrl-Z, job control
-				/* IOModeGuard scope */ {
-					IOModeGuard ioModeGuard( _terminal );
-					// Returning to Linux (whatever) shell, leave raw mode
-					// Break out in mid-line
-					// Back from Linux shell, re-enter raw mode
-					raise( SIGSTOP );
-				}
-				dynamic_refresh( dp, dp, activeHistoryLine.get(), activeHistoryLine.length(), historyLinePosition );
-				continue;
-			} break;
-#endif
 
 			// these characters assign the search string, and hence the selected input line
 			case Replxx::KEY::BACKSPACE: { // backspace/ctrl-H, delete char to left of cursor
