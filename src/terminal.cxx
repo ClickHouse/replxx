@@ -334,7 +334,8 @@ char32_t read_unicode_character(int in_fd_, int escDelay_) {
 		struct pollfd fd = { .fd = in_fd_, .events = POLLIN };
 		do {
 			errno = 0;
-			nread = poll(&fd, 1, escDelay_ > 0 ? escDelay_ : -1);
+			/* A positive delay limits the wait, zero waits indefinitely, a negative one does not wait. */
+			nread = poll(&fd, 1, escDelay_ > 0 ? escDelay_ : ( escDelay_ < 0 ? 0 : -1 ));
 		} while ((nread < 0) && (errno == EINTR || errno == EAGAIN));
 
 		if (nread > 0 && fd.revents & POLLIN) nread = read( in_fd_, &c, 1 );
@@ -792,7 +793,8 @@ int Terminal::read_verbatim( char32_t* buffer_, int size_ ) {
 	int statusFlags( ::fcntl( _in_fd, F_GETFL, 0 ) );
 	::fcntl( _in_fd, F_SETFL, statusFlags | O_NONBLOCK );
 	while ( len < size_ ) {
-		char32_t c( read_unicode_character(_in_fd) );
+		/* Take only the input that is already available: the descriptor is non-blocking, but `poll` is not. */
+		char32_t c( read_unicode_character(_in_fd, -1) );
 		if ( c == 0 ) {
 			break;
 		}
