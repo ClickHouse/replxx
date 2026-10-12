@@ -40,6 +40,7 @@ private:
 	struct termios _origTermios; /* in order to restore at exit */
 	struct termios _rawModeTermios; /* in order to reset raw mode after callbacks */
 	int _interrupt[2];
+	bool _windowChangeHandlerInstalled = false; /* whether this terminal receives `SIGWINCH` */
 #endif
 	bool _rawMode; /* for destructor to check if restore is needed */
 	Utf8String _utf8;
