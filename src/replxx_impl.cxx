@@ -2783,6 +2783,10 @@ void Replxx::ReplxxImpl::set_escdelay( int delay ) {
 	_terminal.set_escdelay( delay );
 }
 
+int Replxx::ReplxxImpl::prompt_indentation( void ) {
+	return _prompt.indentation();
+}
+
 /**
  * Display the dynamic incremental search prompt and the current user input
  * line.
