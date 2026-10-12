@@ -130,7 +130,8 @@ private:
 	bool _noColor;
 	bool _indentMultiline;
 	named_actions_t _namedActions;
-	key_press_handlers_t _keyPressHandlers;
+	int _editingMode;
+	std::unordered_map<int, key_press_handlers_t> _keyPressHandlers;
 	Terminal _terminal;
 	std::thread::id _currentThread;
 	Prompt _prompt;
@@ -196,6 +197,8 @@ public:
 	void set_unique_history( bool );
 	void set_no_color( bool val );
 	void set_indent_multiline( bool val );
+	void set_editing_mode( int mode );
+	void set_escdelay( int delay );
 	void set_max_history_size( int len );
 	void set_completion_count_cutoff( int len );
 	int install_window_change_handler( void );
@@ -207,11 +210,12 @@ public:
 	void emulate_key_press( char32_t );
 	Replxx::ACTION_RESULT invoke( Replxx::ACTION, char32_t );
 	bool history_recalled( void ) const;
-	void bind_key( char32_t, Replxx::key_press_handler_t );
-	void bind_key_internal( char32_t, char const* );
+	void bind_key( char32_t, Replxx::key_press_handler_t, int editingMode = 0 );
+	void bind_key_internal( char32_t, char const*, int editingMode = 0 );
 	Replxx::State get_state( void ) const;
 	void set_state( Replxx::State const& );
 	void set_ignore_case( bool val );
+	int prompt_indentation( void );
 private:
 	ReplxxImpl( ReplxxImpl const& ) = delete;
 	ReplxxImpl& operator = ( ReplxxImpl const& ) = delete;
@@ -229,6 +233,13 @@ private:
 	Replxx::ACTION_RESULT move_one_word_left( char32_t );
 	template <bool subword>
 	Replxx::ACTION_RESULT move_one_word_right( char32_t );
+	template <bool subword>
+	Replxx::ACTION_RESULT move_to_next_word( char32_t );
+	template <bool subword>
+	Replxx::ACTION_RESULT move_to_previous_word( char32_t );
+	Replxx::ACTION_RESULT move_to_character( char32_t );
+	Replxx::ACTION_RESULT move_to_character_reverse( char32_t );
+	Replxx::ACTION_RESULT move_to_line( char32_t );
 	template <bool subword>
 	Replxx::ACTION_RESULT kill_word_to_left( char32_t );
 	template <bool subword>
@@ -250,6 +261,10 @@ private:
 	Replxx::ACTION_RESULT send_eof( char32_t );
 	Replxx::ACTION_RESULT delete_character( char32_t );
 	Replxx::ACTION_RESULT backspace_character( char32_t );
+	template <bool subword>
+	Replxx::ACTION_RESULT delete_until_next_word( char32_t );
+	Replxx::ACTION_RESULT delete_until_character( char32_t );
+	Replxx::ACTION_RESULT delete_backwards_until_character( char32_t );
 	Replxx::ACTION_RESULT commit_line( char32_t );
 	Replxx::ACTION_RESULT line_next( char32_t );
 	Replxx::ACTION_RESULT line_previous( char32_t );
@@ -265,6 +280,7 @@ private:
 	Replxx::ACTION_RESULT hint_previous( char32_t );
 	Replxx::ACTION_RESULT hint_move( bool );
 	Replxx::ACTION_RESULT toggle_overwrite_mode( char32_t );
+	Replxx::ACTION_RESULT switch_editing_mode( char32_t );
 #ifndef _WIN32
 	Replxx::ACTION_RESULT verbatim_insert( char32_t );
 	Replxx::ACTION_RESULT suspend( char32_t );
