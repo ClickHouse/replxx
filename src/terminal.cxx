@@ -1,3 +1,4 @@
+#include <atomic>
 #include <memory>
 #include <cerrno>
 #include <cstdlib>
@@ -75,12 +76,17 @@ bool out( is_a_tty( 1 ) );
 }
 
 #ifndef _WIN32
-Terminal* _terminal_ = nullptr;
+/* The terminal that receives the `SIGWINCH` notifications. Signals are process-wide, so only
+ * a terminal that installed the window change handler registers itself here: several terminals
+ * may live in one process (e.g. client sessions embedded into a server, attached to their own
+ * pseudo-terminals) and they must not overwrite each other's registration. */
+static std::atomic<Terminal*> _terminal_{ nullptr };
 static void WindowSizeChanged( int ) {
-	if ( ! _terminal_ ) {
+	Terminal* terminal( _terminal_.load() );
+	if ( ! terminal ) {
 		return;
 	}
-	_terminal_->notify_event( Terminal::EVENT_TYPE::RESIZE );
+	terminal->notify_event( Terminal::EVENT_TYPE::RESIZE );
 }
 #endif
 
@@ -258,7 +264,9 @@ int Terminal::enable_raw_mode( void ) {
 	}
 
 #ifndef _WIN32
-	_terminal_ = this;
+	if ( _windowChangeHandlerInstalled ) {
+		_terminal_.store( this );
+	}
 #endif
 	return ( 0 );
 }
@@ -295,7 +303,8 @@ void Terminal::disable_raw_mode(void) {
 	SetConsoleCP( _inputCodePage );
 	_consoleIn = INVALID_HANDLE_VALUE;
 #else
-	_terminal_ = nullptr;
+	Terminal* self( this );
+	_terminal_.compare_exchange_strong( self, nullptr );
 	if ( tcsetattr( _in_fd, TCSADRAIN, &_origTermios ) == -1 ) {
 		return;
 	}
@@ -313,8 +322,10 @@ void Terminal::disable_raw_mode(void) {
  * @return char32_t Unicode character
  */
 char32_t read_unicode_character(int in_fd_, int escDelay_) {
-	static char8_t utf8String[5];
-	static size_t utf8Count = 0;
+	/* A partially read sequence is kept between the calls. It is per thread rather than global,
+	 * because several terminals may be read concurrently in one process. */
+	thread_local char8_t utf8String[5];
+	thread_local size_t utf8Count = 0;
 	while (true) {
 		char8_t c;
 
@@ -800,6 +811,7 @@ int Terminal::install_window_change_handler( void ) {
 	if (sigaction(SIGWINCH, &sa, nullptr) == -1) {
 		return errno;
 	}
+	_windowChangeHandlerInstalled = true;
 	return 0;
 }
 #endif
