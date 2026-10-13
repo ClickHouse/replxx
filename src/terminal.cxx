@@ -116,6 +116,11 @@ Terminal::Terminal(int in_fd_, int out_fd_)
 }
 
 Terminal::~Terminal( void ) {
+#ifndef _WIN32
+	if ( _windowChangeHandlerInstalled ) {
+		sigaction( SIGWINCH, &_origWindowChangeHandler, nullptr );
+	}
+#endif
 	if ( _rawMode ) {
 		disable_raw_mode();
 	}
@@ -784,7 +789,7 @@ int Terminal::install_window_change_handler( void ) {
 	sa.sa_flags = 0;
 	sa.sa_handler = &WindowSizeChanged;
 
-	if (sigaction(SIGWINCH, &sa, nullptr) == -1) {
+	if (sigaction(SIGWINCH, &sa, &_origWindowChangeHandler) == -1) {
 		return errno;
 	}
 	_windowChangeHandlerInstalled = true;
