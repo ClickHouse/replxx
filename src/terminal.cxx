@@ -308,8 +308,8 @@ void Terminal::disable_raw_mode(void) {
  * @return char32_t Unicode character
  */
 char32_t read_unicode_character(int in_fd_) {
-	static char8_t utf8String[5];
-	static size_t utf8Count = 0;
+	thread_local char8_t utf8String[5];
+	thread_local size_t utf8Count = 0;
 	while (true) {
 		char8_t c;
 

@@ -38,7 +38,7 @@ namespace EscapeSequenceProcessing { // move these out of global namespace
 // changes and extensions without having to touch a lot of code.
 
 
-static char32_t thisKeyMetaCtrl = 0;	// holds pre-set Meta and/or Ctrl modifiers
+static thread_local char32_t thisKeyMetaCtrl = 0;	// holds pre-set Meta and/or Ctrl modifiers
 
 // This dispatch routine is given a dispatch table and then farms work out to
 // routines

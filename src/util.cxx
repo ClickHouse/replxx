@@ -136,7 +136,7 @@ char const* ansi_color( Replxx::Color color_ ) {
 	char const* bold( ( code & color::BOLD ) != 0 ? ";1" : "" );
 	char const* underline = ( ( code & color::UNDERLINE ) != 0 ? ";4" : "" );
 	static int const MAX_COLOR_CODE_SIZE( 32 );
-	static char colorBuffer[MAX_COLOR_CODE_SIZE];
+	thread_local char colorBuffer[MAX_COLOR_CODE_SIZE];
 	int pos( 0 );
 	if ( ( code & static_cast<int unsigned>( Replxx::Color::DEFAULT ) ) != 0 ) {
 		pos = snprintf( colorBuffer, MAX_COLOR_CODE_SIZE, "\033[0%s%sm", underline, bold );
