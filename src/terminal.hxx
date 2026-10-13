@@ -40,6 +40,8 @@ private:
 	struct termios _origTermios; /* in order to restore at exit */
 	struct termios _rawModeTermios; /* in order to reset raw mode after callbacks */
 	int _interrupt[2];
+	char8_t _utf8String[5] = {};
+	size_t _utf8Count = 0;
 #endif
 	bool _rawMode; /* for destructor to check if restore is needed */
 	Utf8String _utf8;
@@ -71,6 +73,7 @@ public:
 	void jump_cursor( int, int );
 	void set_cursor_visible( bool );
 #ifndef _WIN32
+	char32_t read_unicode_character( void );
 	int read_verbatim( char32_t*, int );
 	int install_window_change_handler( void );
 #endif
@@ -85,7 +88,6 @@ private:
 };
 
 void beep(int fd_);
-char32_t read_unicode_character(int in_fd_);
 
 namespace tty {
 
