@@ -8,6 +8,7 @@
 #include <windows.h>
 #else
 #include <termios.h>
+#include <signal.h>
 #endif
 
 #include "utf8string.hxx"
@@ -43,6 +44,7 @@ private:
 	char8_t _utf8String[5] = {};
 	size_t _utf8Count = 0;
 	bool _windowChangeHandlerInstalled = false;
+	struct sigaction _origWindowChangeHandler;
 #endif
 	bool _rawMode; /* for destructor to check if restore is needed */
 	Utf8String _utf8;
