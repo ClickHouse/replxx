@@ -1,4 +1,5 @@
 #include <memory>
+#include <atomic>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -75,12 +76,13 @@ bool out( is_a_tty( 1 ) );
 }
 
 #ifndef _WIN32
-Terminal* _terminal_ = nullptr;
+static std::atomic<Terminal*> _terminal_{ nullptr };
 static void WindowSizeChanged( int ) {
-	if ( ! _terminal_ ) {
+	Terminal* terminal( _terminal_.load() );
+	if ( ! terminal ) {
 		return;
 	}
-	_terminal_->notify_event( Terminal::EVENT_TYPE::RESIZE );
+	terminal->notify_event( Terminal::EVENT_TYPE::RESIZE );
 }
 #endif
 
@@ -257,7 +259,9 @@ int Terminal::enable_raw_mode( void ) {
 	}
 
 #ifndef _WIN32
-	_terminal_ = this;
+	if ( _windowChangeHandlerInstalled ) {
+		_terminal_ = this;
+	}
 #endif
 	return ( 0 );
 }
@@ -290,7 +294,8 @@ void Terminal::disable_raw_mode(void) {
 	SetConsoleCP( _inputCodePage );
 	_consoleIn = INVALID_HANDLE_VALUE;
 #else
-	_terminal_ = nullptr;
+	Terminal* expected( this );
+	_terminal_.compare_exchange_strong( expected, nullptr );
 	if ( tcsetattr( _in_fd, TCSADRAIN, &_origTermios ) == -1 ) {
 		return;
 	}
@@ -781,6 +786,10 @@ int Terminal::install_window_change_handler( void ) {
 
 	if (sigaction(SIGWINCH, &sa, nullptr) == -1) {
 		return errno;
+	}
+	_windowChangeHandlerInstalled = true;
+	if ( _rawMode ) {
+		_terminal_ = this;
 	}
 	return 0;
 }
