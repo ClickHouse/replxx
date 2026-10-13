@@ -134,6 +134,7 @@ char const* ansi_color( Replxx::Color color_ ) {
 	char const* bold( ( code & color::BOLD ) != 0 ? ";1" : "" );
 	char const* underline = ( ( code & color::UNDERLINE ) != 0 ? ";4" : "" );
 	static int const MAX_COLOR_CODE_SIZE( 32 );
+	/* Per thread: the function is called concurrently, and the result is consumed right away. */
 	thread_local char colorBuffer[MAX_COLOR_CODE_SIZE];
 	int pos( 0 );
 	if ( ( code & static_cast<int unsigned>( Replxx::Color::DEFAULT ) ) != 0 ) {

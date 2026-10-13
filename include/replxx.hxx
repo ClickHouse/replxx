@@ -158,6 +158,10 @@ public:
 		NEW_LINE,
 		DELETE_CHARACTER_UNDER_CURSOR,
 		DELETE_CHARACTER_LEFT_OF_CURSOR,
+		DELETE_UNTIL_NEXT_WORD,
+		DELETE_UNTIL_NEXT_SUBWORD,
+		DELETE_UNTIL_CHARACTER,
+		DELETE_BACKWARDS_UNTIL_CHARACTER,
 		KILL_TO_END_OF_LINE,
 		KILL_TO_BEGINING_OF_LINE,
 		KILL_TO_END_OF_WORD,
@@ -174,6 +178,13 @@ public:
 		MOVE_CURSOR_ONE_WORD_RIGHT,
 		MOVE_CURSOR_ONE_SUBWORD_LEFT,
 		MOVE_CURSOR_ONE_SUBWORD_RIGHT,
+		MOVE_CURSOR_TO_NEXT_WORD,
+		MOVE_CURSOR_TO_NEXT_SUBWORD,
+		MOVE_CURSOR_TO_PREVIOUS_WORD,
+		MOVE_CURSOR_TO_PREVIOUS_SUBWORD,
+		MOVE_CURSOR_TO_CHARACTER,
+		MOVE_CURSOR_TO_CHARACTER_REVERSE,
+		MOVE_CURSOR_TO_LINE,
 		MOVE_CURSOR_LEFT,
 		MOVE_CURSOR_RIGHT,
 		LINE_NEXT,
@@ -522,7 +533,7 @@ public:
 	 * \param code - handle this key-press event with following handler.
 	 * \param handle - use this handler to handle key-press event.
 	 */
-	void bind_key( char32_t code, key_press_handler_t handler );
+	void bind_key( char32_t code, key_press_handler_t handler, int editingMode = 0 );
 
 	/*! \brief Bind internal `replxx` action (by name) to handle given key-press event.
 	 *
@@ -534,7 +545,7 @@ public:
 	 * \param code - handle this key-press event with following handler.
 	 * \param actionName - name of internal action to be invoked on key press.
 	 */
-	void bind_key_internal( char32_t code, char const* actionName );
+	void bind_key_internal( char32_t code, char const* actionName, int editingMode = 0 );
 
 	void history_add( std::string const& line );
 
@@ -599,6 +610,10 @@ public:
 	 */
 	void set_word_break_characters( char const* wordBreakers );
 
+	void set_subword_break_characters( char const* wordBreakers );
+
+	int prompt_indentation( void );
+
 	/*! \brief How many completions should trigger pagination.
 	 */
 	void set_completion_count_cutoff( int count );
@@ -659,6 +674,10 @@ public:
 	 * \param val - if set to true then multiline indent will be enabled.
 	 */
 	void set_indent_multiline( bool val );
+
+	void set_editing_mode( int mode );
+
+	void set_escdelay( int delay );
 
 	/*! \brief Set maximum number of entries in history list.
 	 */

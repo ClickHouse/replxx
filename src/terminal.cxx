@@ -1,5 +1,5 @@
-#include <memory>
 #include <atomic>
+#include <memory>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -76,6 +76,10 @@ bool out( is_a_tty( 1 ) );
 }
 
 #ifndef _WIN32
+/* The terminal that receives the `SIGWINCH` notifications. Signals are process-wide, so only
+ * a terminal that installed the window change handler registers itself here: several terminals
+ * may live in one process (e.g. client sessions embedded into a server, attached to their own
+ * pseudo-terminals) and they must not overwrite each other's registration. */
 static std::atomic<Terminal*> _terminal_{ nullptr };
 static void WindowSizeChanged( int ) {
 	Terminal* terminal( _terminal_.load() );
@@ -104,6 +108,7 @@ Terminal::Terminal(int in_fd_, int out_fd_)
 	, _rawModeTermios()
 	, _interrupt()
 #endif
+	, _escDelay(0)
 	, _rawMode( false )
 	, _utf8()
 	, _in_fd(in_fd_)
@@ -265,7 +270,7 @@ int Terminal::enable_raw_mode( void ) {
 
 #ifndef _WIN32
 	if ( _windowChangeHandlerInstalled ) {
-		_terminal_ = this;
+		_terminal_.store( this );
 	}
 #endif
 	return ( 0 );
@@ -287,6 +292,10 @@ int Terminal::reset_raw_mode( void ) {
 	/* put terminal in raw mode after flushing */
 	return ( tcsetattr( _in_fd, TCSADRAIN, &_rawModeTermios ) );
 #endif
+}
+
+void Terminal::set_escdelay(int delay) {
+	_escDelay = delay;
 }
 
 void Terminal::disable_raw_mode(void) {
@@ -317,15 +326,20 @@ void Terminal::disable_raw_mode(void) {
  *
  * @return char32_t Unicode character
  */
-char32_t Terminal::read_unicode_character( void ) {
+char32_t Terminal::read_unicode_character( int escDelay_ ) {
 	while (true) {
 		char8_t c;
 
 		/* Continue reading if interrupted by signal. */
 		ssize_t nread;
+		struct pollfd fd = { .fd = _in_fd, .events = POLLIN };
 		do {
-			nread = read( _in_fd, &c, 1 );
-		} while ((nread == -1) && (errno == EINTR));
+			errno = 0;
+			/* A positive delay limits the wait, zero waits indefinitely, a negative one does not wait. */
+			nread = poll(&fd, 1, escDelay_ > 0 ? escDelay_ : ( escDelay_ < 0 ? 0 : -1 ));
+		} while ((nread < 0) && (errno == EINTR || errno == EAGAIN));
+
+		if (nread > 0 && fd.revents & POLLIN) nread = read( _in_fd, &c, 1 );
 
 		if (nread <= 0) return 0;
 		if (c <= 0x7F || locale::is8BitEncoding) { // short circuit ASCII
@@ -475,8 +489,14 @@ char32_t Terminal::read_char( void ) {
 					continue; // in raw mode, ReadConsoleInput shows shift, ctrl - ignore them
 			}
 		} else if ( key == Replxx::KEY::ESCAPE ) { // ESC, set flag for later
-			escSeen = true;
-			continue;
+			if ( _escDelay > 0 ) {
+				c = key;
+				break;
+			}
+			else {
+				escSeen = true;
+				continue;
+			}
 		} else if ( ( key >= 0xD800 ) && ( key <= 0xDBFF ) ) {
 			highSurrogate = key - 0xD800;
 			continue;
@@ -566,10 +586,11 @@ char32_t Terminal::read_char( void ) {
 	}
 #endif // __REPLXX_DEBUG__
 
-	c = EscapeSequenceProcessing::doDispatch(*this, _err_fd, c);
-	if ( is_control_code( c ) ) {
+	c = EscapeSequenceProcessing::doDispatch(*this, _err_fd, c, _escDelay);
+	if ( !(_escDelay && c == 27) && is_control_code( c ) ) {
 		c = Replxx::KEY::control( control_to_human( c ) );
 	}
+
 #endif // #_WIN32
 	return ( c );
 }
@@ -773,7 +794,8 @@ int Terminal::read_verbatim( char32_t* buffer_, int size_ ) {
 	int statusFlags( ::fcntl( _in_fd, F_GETFL, 0 ) );
 	::fcntl( _in_fd, F_SETFL, statusFlags | O_NONBLOCK );
 	while ( len < size_ ) {
-		char32_t c( read_unicode_character() );
+		/* Take only the input that is already available: the descriptor is non-blocking, but `poll` is not. */
+		char32_t c( read_unicode_character( -1 ) );
 		if ( c == 0 ) {
 			break;
 		}
@@ -794,7 +816,7 @@ int Terminal::install_window_change_handler( void ) {
 	}
 	_windowChangeHandlerInstalled = true;
 	if ( _rawMode ) {
-		_terminal_ = this;
+		_terminal_.store( this );
 	}
 	return 0;
 }
