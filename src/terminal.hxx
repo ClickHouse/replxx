@@ -42,6 +42,7 @@ private:
 	int _interrupt[2];
 	char8_t _utf8String[5] = {};
 	size_t _utf8Count = 0;
+	bool _windowChangeHandlerInstalled = false;
 #endif
 	bool _rawMode; /* for destructor to check if restore is needed */
 	Utf8String _utf8;
