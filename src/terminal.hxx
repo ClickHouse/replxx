@@ -8,6 +8,7 @@
 #include <windows.h>
 #else
 #include <termios.h>
+#include <signal.h>
 #endif
 
 #include "utf8string.hxx"
@@ -40,7 +41,10 @@ private:
 	struct termios _origTermios; /* in order to restore at exit */
 	struct termios _rawModeTermios; /* in order to reset raw mode after callbacks */
 	int _interrupt[2];
+	char8_t _utf8String[5] = {}; /* partially read UTF-8 sequence */
+	size_t _utf8Count = 0;
 	bool _windowChangeHandlerInstalled = false; /* whether this terminal receives `SIGWINCH` */
+	struct sigaction _origWindowChangeHandler;
 #endif
 	int _escDelay;
 	bool _rawMode; /* for destructor to check if restore is needed */
@@ -75,6 +79,8 @@ public:
 	void set_cursor_visible( bool );
 	void set_escdelay(int delay);
 #ifndef _WIN32
+	/* A positive delay limits the wait, zero waits indefinitely, a negative one does not wait. */
+	char32_t read_unicode_character( int escDelay_ = 0 );
 	int read_verbatim( char32_t*, int );
 	int install_window_change_handler( void );
 #endif
@@ -89,7 +95,6 @@ private:
 };
 
 void beep(int fd_);
-char32_t read_unicode_character(int in_fd_, int escDelay_ = 0);
 
 namespace tty {
 

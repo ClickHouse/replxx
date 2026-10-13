@@ -3,6 +3,8 @@
 
 namespace replxx {
 
+class Terminal;
+
 namespace EscapeSequenceProcessing {
 
 // This is a typedef for the routine called by doDispatch().	It takes the
@@ -12,7 +14,7 @@ namespace EscapeSequenceProcessing {
 // dispatch routines, then eventually returns the final (possibly extended or
 // special) character.
 //
-typedef char32_t (*CharacterDispatchRoutine)(int, int, char32_t, int);
+typedef char32_t (*CharacterDispatchRoutine)(Terminal&, int, char32_t, int);
 
 // This structure is used by doDispatch() to hold a list of characters to test
 // for and
@@ -27,7 +29,7 @@ struct CharacterDispatch {
 	CharacterDispatchRoutine* dispatch; // array of routines to call
 };
 
-char32_t doDispatch(int in_fd_, int err_fd, char32_t c, int escDelay = 0);
+char32_t doDispatch(Terminal& terminal_, int err_fd, char32_t c, int escDelay = 0);
 
 }
 

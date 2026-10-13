@@ -121,6 +121,11 @@ Terminal::Terminal(int in_fd_, int out_fd_)
 }
 
 Terminal::~Terminal( void ) {
+#ifndef _WIN32
+	if ( _windowChangeHandlerInstalled ) {
+		sigaction( SIGWINCH, &_origWindowChangeHandler, nullptr );
+	}
+#endif
 	if ( _rawMode ) {
 		disable_raw_mode();
 	}
@@ -303,8 +308,8 @@ void Terminal::disable_raw_mode(void) {
 	SetConsoleCP( _inputCodePage );
 	_consoleIn = INVALID_HANDLE_VALUE;
 #else
-	Terminal* self( this );
-	_terminal_.compare_exchange_strong( self, nullptr );
+	Terminal* expected( this );
+	_terminal_.compare_exchange_strong( expected, nullptr );
 	if ( tcsetattr( _in_fd, TCSADRAIN, &_origTermios ) == -1 ) {
 		return;
 	}
@@ -321,41 +326,37 @@ void Terminal::disable_raw_mode(void) {
  *
  * @return char32_t Unicode character
  */
-char32_t read_unicode_character(int in_fd_, int escDelay_) {
-	/* A partially read sequence is kept between the calls. It is per thread rather than global,
-	 * because several terminals may be read concurrently in one process. */
-	thread_local char8_t utf8String[5];
-	thread_local size_t utf8Count = 0;
+char32_t Terminal::read_unicode_character( int escDelay_ ) {
 	while (true) {
 		char8_t c;
 
 		/* Continue reading if interrupted by signal. */
 		ssize_t nread;
-		struct pollfd fd = { .fd = in_fd_, .events = POLLIN };
+		struct pollfd fd = { .fd = _in_fd, .events = POLLIN };
 		do {
 			errno = 0;
 			/* A positive delay limits the wait, zero waits indefinitely, a negative one does not wait. */
 			nread = poll(&fd, 1, escDelay_ > 0 ? escDelay_ : ( escDelay_ < 0 ? 0 : -1 ));
 		} while ((nread < 0) && (errno == EINTR || errno == EAGAIN));
 
-		if (nread > 0 && fd.revents & POLLIN) nread = read( in_fd_, &c, 1 );
+		if (nread > 0 && fd.revents & POLLIN) nread = read( _in_fd, &c, 1 );
 
 		if (nread <= 0) return 0;
 		if (c <= 0x7F || locale::is8BitEncoding) { // short circuit ASCII
-			utf8Count = 0;
+			_utf8Count = 0;
 			return c;
-		} else if (utf8Count < sizeof(utf8String) - 1) {
-			utf8String[utf8Count++] = c;
-			utf8String[utf8Count] = 0;
+		} else if (_utf8Count < sizeof(_utf8String) - 1) {
+			_utf8String[_utf8Count++] = c;
+			_utf8String[_utf8Count] = 0;
 			char32_t unicodeChar[2];
 			int ucharCount( 0 );
-			ConversionResult res = copyString8to32(unicodeChar, 2, ucharCount, utf8String);
+			ConversionResult res = copyString8to32(unicodeChar, 2, ucharCount, _utf8String);
 			if (res == conversionOK && ucharCount) {
-				utf8Count = 0;
+				_utf8Count = 0;
 				return unicodeChar[0];
 			}
 		} else {
-			utf8Count = 0; // this shouldn't happen: got four bytes but no UTF-8 character
+			_utf8Count = 0; // this shouldn't happen: got four bytes but no UTF-8 character
 		}
 	}
 }
@@ -521,7 +522,7 @@ char32_t Terminal::read_char( void ) {
 	}
 
 #else
-	c = read_unicode_character(_in_fd);
+	c = read_unicode_character();
 	if (c == 0) {
 		return 0;
 	}
@@ -585,7 +586,7 @@ char32_t Terminal::read_char( void ) {
 	}
 #endif // __REPLXX_DEBUG__
 
-	c = EscapeSequenceProcessing::doDispatch(_in_fd, _err_fd, c, _escDelay);
+	c = EscapeSequenceProcessing::doDispatch(*this, _err_fd, c, _escDelay);
 	if ( !(_escDelay && c == 27) && is_control_code( c ) ) {
 		c = Replxx::KEY::control( control_to_human( c ) );
 	}
@@ -789,12 +790,12 @@ void Terminal::set_cursor_visible( bool ) {}
 #ifndef _WIN32
 int Terminal::read_verbatim( char32_t* buffer_, int size_ ) {
 	int len( 0 );
-	buffer_[len ++] = read_unicode_character(_in_fd);
+	buffer_[len ++] = read_unicode_character();
 	int statusFlags( ::fcntl( _in_fd, F_GETFL, 0 ) );
 	::fcntl( _in_fd, F_SETFL, statusFlags | O_NONBLOCK );
 	while ( len < size_ ) {
 		/* Take only the input that is already available: the descriptor is non-blocking, but `poll` is not. */
-		char32_t c( read_unicode_character(_in_fd, -1) );
+		char32_t c( read_unicode_character( -1 ) );
 		if ( c == 0 ) {
 			break;
 		}
@@ -810,10 +811,13 @@ int Terminal::install_window_change_handler( void ) {
 	sa.sa_flags = 0;
 	sa.sa_handler = &WindowSizeChanged;
 
-	if (sigaction(SIGWINCH, &sa, nullptr) == -1) {
+	if (sigaction(SIGWINCH, &sa, &_origWindowChangeHandler) == -1) {
 		return errno;
 	}
 	_windowChangeHandlerInstalled = true;
+	if ( _rawMode ) {
+		_terminal_.store( this );
+	}
 	return 0;
 }
 #endif
