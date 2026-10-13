@@ -870,7 +870,7 @@ static CharacterDispatch initialDispatch = {2, "\x1B\x7F", initialRoutines};
 static char32_t setMetaRoutine(Terminal& terminal_, int err_fd_, char32_t c, int escDelay) {
 	thisKeyMetaCtrl = Replxx::KEY::BASE_META;
 	if (c == 0x1B)	// another ESC, stay in ESC processing mode
-		escRoutine(terminal_, err_fd_, c, escDelay);
+		return escRoutine(terminal_, err_fd_, c, escDelay);
 	return doDispatch(terminal_, err_fd_, c, initialDispatch, escDelay);
 }
 
