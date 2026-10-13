@@ -1014,6 +1014,11 @@ void Replxx::ReplxxImpl::refresh_line( HINT_ACTION hintAction_, bool refreshProm
 		return;
 	}
 	_refreshSkipped = false;
+	// The terminal may be resized without `SIGWINCH`, e.g. when the window change handler
+	// is not installed, so the width is re-read on every refresh.
+	if ( _prompt.screen_columns() != _terminal.get_screen_columns() ) {
+		_prompt.update_screen_columns();
+	}
 	render( hintAction_ );
 	handle_hints( hintAction_ );
 	// calculate the desired position of the cursor
