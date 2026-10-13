@@ -211,6 +211,7 @@ Replxx::ReplxxImpl::ReplxxImpl( std::istream & in_, std::ostream & out_, int in_
 	, _hintContextLenght( -1 )
 	, _hintSeed()
 	, _hasNewlines( false )
+	, _historyRecalled( false )
 	, _oldPos( 0 )
 	, _moveCursor( false )
 	, _ignoreCase( false )
@@ -368,6 +369,21 @@ Replxx::ReplxxImpl::~ReplxxImpl( void ) {
 }
 
 Replxx::ACTION_RESULT Replxx::ReplxxImpl::invoke( Replxx::ACTION action_, char32_t code ) {
+	if (
+		( action_ == Replxx::ACTION::LINE_NEXT )
+		|| ( action_ == Replxx::ACTION::LINE_PREVIOUS )
+		|| ( action_ == Replxx::ACTION::HISTORY_NEXT )
+		|| ( action_ == Replxx::ACTION::HISTORY_PREVIOUS )
+		|| ( action_ == Replxx::ACTION::HISTORY_FIRST )
+		|| ( action_ == Replxx::ACTION::HISTORY_LAST )
+		|| ( action_ == Replxx::ACTION::HISTORY_RESTORE_CURRENT )
+		|| ( action_ == Replxx::ACTION::HISTORY_RESTORE )
+		|| ( action_ == Replxx::ACTION::HISTORY_INCREMENTAL_SEARCH )
+		|| ( action_ == Replxx::ACTION::HISTORY_SEEDED_INCREMENTAL_SEARCH )
+		|| ( action_ == Replxx::ACTION::HISTORY_COMMON_PREFIX_SEARCH )
+	) {
+		_historyRecalled = false;
+	}
 	switch ( action_ ) {
 		case ( Replxx::ACTION::INSERT_CHARACTER ):                  return ( action( RESET_KILL_ACTION | HISTORY_RECALL_MOST_RECENT, &Replxx::ReplxxImpl::insert_character, code ) );
 		case ( Replxx::ACTION::NEW_LINE ):                          return ( action( RESET_KILL_ACTION | HISTORY_RECALL_MOST_RECENT, &Replxx::ReplxxImpl::new_line, code ) );
@@ -441,6 +457,10 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::invoke( Replxx::ACTION action_, char32
 	return ( Replxx::ACTION_RESULT::BAIL );
 }
 
+bool Replxx::ReplxxImpl::history_recalled( void ) const {
+	return ( _historyRecalled );
+}
+
 void Replxx::ReplxxImpl::bind_key( char32_t code_, Replxx::key_press_handler_t handler_, int editingMode_ ) {
 	_keyPressHandlers[editingMode_][code_] = handler_;
 }
@@ -466,6 +486,7 @@ void Replxx::ReplxxImpl::set_state( Replxx::State const& state_ ) {
 		_pos = min( state_.cursor_position(), _data.length() );
 	}
 	_modifiedState = true;
+	_hintContextLenght = -1;
 }
 
 void Replxx::ReplxxImpl::set_ignore_case( bool val ) {
@@ -778,6 +799,10 @@ void Replxx::ReplxxImpl::set_prompt( std::string prompt ) {
 void Replxx::ReplxxImpl::preload_puffer(const char* preloadText) {
 	_data.assign( preloadText );
 	_prefix = _pos = _data.length();
+	// The hint cache (_hintSeed/_hintsCache) survives across prompts, so a preloaded line that is
+	// byte-for-byte equal to the previously displayed one would reuse the stale cache without ever
+	// invoking the hint callback. Invalidate it so the callback always sees the preloaded line.
+	_hintContextLenght = -1;
 }
 
 void Replxx::ReplxxImpl::set_color( Replxx::Color color_ ) {
@@ -2195,6 +2220,8 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::history_move( bool previous_ ) {
 	}
 	_data.assign( _history.current() );
 	_pos = _data.length();
+	_historyRecalled = true;
+	_hintContextLenght = -1;
 	refresh_line( HINT_ACTION::REGENERATE, true /* refreshPrompt */ );
 	return ( Replxx::ACTION_RESULT::CONTINUE );
 }
@@ -2238,6 +2265,8 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::history_restore_current( char32_t ) {
 		_history.reset_current_scratch();
 		_data.assign( _history.current() );
 		_pos = _data.length();
+		_historyRecalled = true;
+		_hintContextLenght = -1;
 		refresh_line();
 	}
 	return ( Replxx::ACTION_RESULT::CONTINUE );
@@ -2250,6 +2279,8 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::history_restore( char32_t ) {
 	if ( ! _history.is_last() ) {
 		_data.assign( _history.current() );
 		_pos = _data.length();
+		_historyRecalled = true;
+		_hintContextLenght = -1;
 		refresh_line();
 	}
 	return ( Replxx::ACTION_RESULT::CONTINUE );
@@ -2267,6 +2298,8 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::history_jump( bool back_ ) {
 		_history.jump( back_ );
 		_data.assign( _history.current() );
 		_pos = _data.length();
+		_historyRecalled = true;
+		_hintContextLenght = -1;
 		refresh_line( HINT_ACTION::REGENERATE, true /* refreshPrompt */ );
 	}
 	return ( Replxx::ACTION_RESULT::CONTINUE );
@@ -2387,6 +2420,8 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::common_prefix_search( char32_t startCh
 	) {
 		_data.assign( _history.current() );
 		_pos = _data.length();
+		_historyRecalled = true;
+		_hintContextLenght = -1;
 		refresh_line();
 	}
 	return ( Replxx::ACTION_RESULT::CONTINUE );
@@ -2424,6 +2459,7 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::incremental_history_search( char32_t s
 	char32_t c( 0 );
 	bool keepLooping = true;
 	bool useSearchedLine = true;
+	bool selectedHistoryEntry = false;
 	bool searchAgain = false;
 	UnicodeString activeHistoryLine;
 	while ( keepLooping ) {
@@ -2584,9 +2620,11 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::incremental_history_search( char32_t s
 			if ( ! found ) {
 				_history.restore_pos();
 			}
+			selectedHistoryEntry = found;
 		} else {
 			_history.restore_pos();
 			historyLinePosition = _pos;
+			selectedHistoryEntry = false;
 		}
 		activeHistoryLine.assign( _history.current() );
 		dynamic_refresh( dp, dp, activeHistoryLine.get(), activeHistoryLine.length(), historyLinePosition ); // draw user's text with our prompt
@@ -2604,6 +2642,10 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::incremental_history_search( char32_t s
 		_data.assign( activeHistoryLine );
 		_pos = historyLinePosition;
 		_modifiedState = true;
+		if ( selectedHistoryEntry ) {
+			_historyRecalled = true;
+			_hintContextLenght = -1;
+		}
 	} else if ( ! useSearchedLine ) {
 		_history.restore_pos();
 	}
