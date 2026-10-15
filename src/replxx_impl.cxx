@@ -2222,6 +2222,9 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::incremental_history_search( char32_t s
 	// don't have to special case it
 	if ( _history.is_last() ) {
 		_history.update_last( _data );
+	} else {
+		// `historyLinePosition` starts as `_pos`, a position in `_data`, and is applied to the current entry.
+		_history.set_current_scratch( _data );
 	}
 	_history.save_pos();
 	int historyLinePosition( _pos );
