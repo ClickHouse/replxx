@@ -2453,7 +2453,7 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::incremental_history_search( char32_t s
 	// leaving history search, restore previous prompt, maybe make searched line
 	// current
 	Prompt pb( _terminal );
-	UnicodeString tempUnicode( &_prompt._text[_prompt._lastLinePosition], _prompt._text.length() - _prompt._lastLinePosition );
+	UnicodeString tempUnicode( _prompt._text, _prompt._lastLinePosition );
 	pb.set_text( tempUnicode );
 	pb.update_screen_columns();
 	if ( useSearchedLine && ( activeHistoryLine.length() > 0 ) ) {

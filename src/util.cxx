@@ -13,7 +13,7 @@ namespace replxx {
 
 int mk_wcwidth( char32_t );
 
-int virtual_render( char32_t const* display_, int size_, int& x_, int& y_, int screenColumns_, int promptLen_, UnicodeString* rendered_, int out_fd_) {
+int virtual_render( char32_t const* display_, int size_, int& x_, int& y_, int screenColumns_, int promptLen_, UnicodeString* rendered_, int* lastLineStart_, int out_fd_) {
 	int visibleCount( 0 );
 	auto render = [&rendered_, &visibleCount]( char32_t c_, bool visible_, bool renderAttributes_ = true ) {
 		if ( rendered_ && renderAttributes_ ) {
@@ -23,14 +23,20 @@ int virtual_render( char32_t const* display_, int size_, int& x_, int& y_, int s
 			}
 		}
 	};
+	auto start_line = [&rendered_, &lastLineStart_]() {
+		if ( rendered_ && lastLineStart_ ) {
+			*lastLineStart_ = rendered_->length();
+		}
+	};
 	bool wrapped( false );
-	auto advance_cursor = [&x_, &y_, &screenColumns_, &wrapped]( int by_ = 1 ) {
+	auto advance_cursor = [&x_, &y_, &screenColumns_, &wrapped, &start_line]( int by_ = 1 ) {
 		wrapped = false;
 		x_ += by_;
 		if ( x_ >= screenColumns_ ) {
 			x_ = 0;
 			++ y_;
 			wrapped = true;
+			start_line();
 		}
 	};
 	bool const renderAttributes( !!tty::is_a_tty(out_fd_) );
@@ -43,6 +49,7 @@ int virtual_render( char32_t const* display_, int size_, int& x_, int& y_, int s
 				++ y_;
 			}
 			x_ = promptLen_;
+			start_line();
 			++ pos;
 			continue;
 		}
