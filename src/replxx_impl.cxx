@@ -1794,10 +1794,10 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::kill_word_to_right( char32_t ) {
 Replxx::ACTION_RESULT Replxx::ReplxxImpl::kill_to_whitespace_to_left( char32_t ) {
 	if ( _pos > 0 ) {
 		int startingPos = _pos;
-		while ( ( _pos > 0 ) && isspace( _data[_pos - 1] ) ) {
+		while ( ( _pos > 0 ) && iswspace( static_cast<wint_t>( _data[_pos - 1] ) ) ) {
 			--_pos;
 		}
-		while ( ( _pos > 0 ) && ! isspace( _data[_pos - 1] ) ) {
+		while ( ( _pos > 0 ) && ! iswspace( static_cast<wint_t>( _data[_pos - 1] ) ) ) {
 			-- _pos;
 		}
 		_killRing.kill( _data.get() + _pos, startingPos - _pos, false );
@@ -1888,11 +1888,11 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::yank_last_arg( char32_t ) {
 	}
 	UnicodeString const& histLine( _history.yank_line() );
 	int endPos( histLine.length() );
-	while ( ( endPos > 0 ) && isspace( histLine[endPos - 1] ) ) {
+	while ( ( endPos > 0 ) && iswspace( static_cast<wint_t>( histLine[endPos - 1] ) ) ) {
 		-- endPos;
 	}
 	int startPos( endPos );
-	while ( ( startPos > 0 ) && ! isspace( histLine[startPos - 1] ) ) {
+	while ( ( startPos > 0 ) && ! iswspace( static_cast<wint_t>( histLine[startPos - 1] ) ) ) {
 		-- startPos;
 	}
 	_pos -= _lastYankSize;
