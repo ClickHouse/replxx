@@ -53,10 +53,10 @@ void Prompt::update_state() {
 	UnicodeString::const_iterator in( _text.begin() );
 
 	int x = 0;
-	int renderedSize( 0 );
-	_characterCount = virtual_render( _text.get(), _text.length(), x, _extraLines, _screenColumns, 0, _text.get(), &renderedSize );
+	UnicodeString rendered;
+	_characterCount = virtual_render( _text.get(), _text.length(), x, _extraLines, _screenColumns, 0, &rendered );
 	_lastLinePosition = _characterCount - x;
-	_text.erase( renderedSize, _text.length() - renderedSize );
+	_text.swap( rendered );
 
 	_cursorRowOffset += _extraLines;
 }
