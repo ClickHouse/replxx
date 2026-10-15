@@ -14,6 +14,7 @@ public:
 	int _characterCount{0};   // visible characters in _text
 	int _extraLines{0};       // extra lines (beyond 1) occupied by prompt
 	int _lastLinePosition{0}; // index into _text where last line begins
+	int _indentation{0};      // screen column where the input starts
 	int _cursorRowOffset{0};  // where the cursor is relative to the start of the prompt
 
 private:
