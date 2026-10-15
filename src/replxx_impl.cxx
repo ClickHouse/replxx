@@ -1794,10 +1794,10 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::kill_word_to_right( char32_t ) {
 Replxx::ACTION_RESULT Replxx::ReplxxImpl::kill_to_whitespace_to_left( char32_t ) {
 	if ( _pos > 0 ) {
 		int startingPos = _pos;
-		while ( ( _pos > 0 ) && isspace( _data[_pos - 1] ) ) {
+		while ( ( _pos > 0 ) && iswspace( static_cast<wint_t>( _data[_pos - 1] ) ) ) {
 			--_pos;
 		}
-		while ( ( _pos > 0 ) && ! isspace( _data[_pos - 1] ) ) {
+		while ( ( _pos > 0 ) && ! iswspace( static_cast<wint_t>( _data[_pos - 1] ) ) ) {
 			-- _pos;
 		}
 		_killRing.kill( _data.get() + _pos, startingPos - _pos, false );
@@ -1888,11 +1888,11 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::yank_last_arg( char32_t ) {
 	}
 	UnicodeString const& histLine( _history.yank_line() );
 	int endPos( histLine.length() );
-	while ( ( endPos > 0 ) && isspace( histLine[endPos - 1] ) ) {
+	while ( ( endPos > 0 ) && iswspace( static_cast<wint_t>( histLine[endPos - 1] ) ) ) {
 		-- endPos;
 	}
 	int startPos( endPos );
-	while ( ( startPos > 0 ) && ! isspace( histLine[startPos - 1] ) ) {
+	while ( ( startPos > 0 ) && ! iswspace( static_cast<wint_t>( histLine[startPos - 1] ) ) ) {
 		-- startPos;
 	}
 	_pos -= _lastYankSize;
@@ -2441,6 +2441,9 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::incremental_history_search( char32_t s
 	// don't have to special case it
 	if ( _history.is_last() ) {
 		_history.update_last( _data );
+	} else {
+		// `historyLinePosition` starts as `_pos`, a position in `_data`, and is applied to the current entry.
+		_history.set_current_scratch( _data );
 	}
 	_history.save_pos();
 	int historyLinePosition( _pos );
@@ -2634,7 +2637,7 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::incremental_history_search( char32_t s
 	// leaving history search, restore previous prompt, maybe make searched line
 	// current
 	Prompt pb( _terminal );
-	UnicodeString tempUnicode( &_prompt._text[_prompt._lastLinePosition], _prompt._text.length() - _prompt._lastLinePosition );
+	UnicodeString tempUnicode( _prompt._text, _prompt._lastLinePosition );
 	pb.set_text( tempUnicode );
 	pb.update_screen_columns();
 	if ( useSearchedLine && ( activeHistoryLine.length() > 0 ) ) {
