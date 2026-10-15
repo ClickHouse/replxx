@@ -23,7 +23,7 @@ inline char32_t control_to_human( char32_t key ) {
 	return ( key < 27 ? ( key + 0x40 ) : ( key + 0x18 ) );
 }
 
-int virtual_render( char32_t const*, int, int&, int&, int, int, UnicodeString* = nullptr, int out_fd = 1);
+int virtual_render( char32_t const*, int, int&, int&, int, int, UnicodeString* = nullptr, int* = nullptr, int out_fd = 1);
 char const* ansi_color( Replxx::Color );
 std::string now_ms_str( void );
 
