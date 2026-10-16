@@ -339,7 +339,9 @@ char32_t Terminal::read_unicode_character( int escDelay_ ) {
 			nread = poll(&fd, 1, escDelay_ > 0 ? escDelay_ : ( escDelay_ < 0 ? 0 : -1 ));
 		} while ((nread < 0) && (errno == EINTR || errno == EAGAIN));
 
-		if (nread > 0 && fd.revents & POLLIN) nread = read( _in_fd, &c, 1 );
+		/* Read on any event, not only `POLLIN`: on a hangup or an error without pending input, `read`
+		 * reports the end of input or the error, and `c` is not used. */
+		if (nread > 0) nread = read( _in_fd, &c, 1 );
 
 		if (nread <= 0) return 0;
 		if (c <= 0x7F || locale::is8BitEncoding) { // short circuit ASCII
