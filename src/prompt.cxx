@@ -53,16 +53,16 @@ void Prompt::update_state() {
 	UnicodeString::const_iterator in( _text.begin() );
 
 	int x = 0;
-	int renderedSize( 0 );
-	_characterCount = virtual_render( _text.get(), _text.length(), x, _extraLines, _screenColumns, 0, _text.get(), &renderedSize );
-	_lastLinePosition = _characterCount - x;
-	_text.erase( renderedSize, _text.length() - renderedSize );
+	UnicodeString rendered;
+	_characterCount = virtual_render( _text.get(), _text.length(), x, _extraLines, _screenColumns, 0, &rendered, &_lastLinePosition );
+	_indentation = x;
+	_text.swap( rendered );
 
 	_cursorRowOffset += _extraLines;
 }
 
 int Prompt::indentation() const {
-	return _characterCount - _lastLinePosition;
+	return _indentation;
 }
 
 // Used with DynamicPrompt (history search)
