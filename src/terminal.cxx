@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <array>
+#include <atomic>
 #include <stdexcept>
 
 #ifdef _WIN32
@@ -75,12 +76,15 @@ bool out( is_a_tty( 1 ) );
 }
 
 #ifndef _WIN32
-Terminal* _terminal_ = nullptr;
+/* Several terminals can be in the raw mode at once in different threads of one process
+ * (e.g. the clients embedded into a server), so the pointer is atomic. */
+std::atomic<Terminal*> _terminal_{ nullptr };
 static void WindowSizeChanged( int ) {
-	if ( ! _terminal_ ) {
+	Terminal* terminal( _terminal_.load() );
+	if ( ! terminal ) {
 		return;
 	}
-	_terminal_->notify_event( Terminal::EVENT_TYPE::RESIZE );
+	terminal->notify_event( Terminal::EVENT_TYPE::RESIZE );
 }
 #endif
 
@@ -290,7 +294,8 @@ void Terminal::disable_raw_mode(void) {
 	SetConsoleCP( _inputCodePage );
 	_consoleIn = INVALID_HANDLE_VALUE;
 #else
-	_terminal_ = nullptr;
+	Terminal* self( this );
+	_terminal_.compare_exchange_strong( self, nullptr );
 	if ( tcsetattr( _in_fd, TCSADRAIN, &_origTermios ) == -1 ) {
 		return;
 	}
@@ -308,8 +313,10 @@ void Terminal::disable_raw_mode(void) {
  * @return char32_t Unicode character
  */
 char32_t read_unicode_character(int in_fd_) {
-	static char8_t utf8String[5];
-	static size_t utf8Count = 0;
+	/* The state of the sequence being read is per thread: several terminals can read in different
+	 * threads of one process. */
+	static thread_local char8_t utf8String[5];
+	static thread_local size_t utf8Count = 0;
 	while (true) {
 		char8_t c;
 
