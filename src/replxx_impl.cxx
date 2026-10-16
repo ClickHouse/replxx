@@ -188,6 +188,7 @@ Replxx::ReplxxImpl::ReplxxImpl( std::istream & in_, std::ostream & out_, int in_
 	, _namedActions()
 	, _editingMode( 0 )
 	, _keyPressHandlers()
+	, _defaultKeyPressHandlers()
 	, _terminal(in_fd_, out_fd_)
 	, _currentThread()
 	, _prompt( _terminal )
@@ -463,6 +464,10 @@ bool Replxx::ReplxxImpl::history_recalled( void ) const {
 
 void Replxx::ReplxxImpl::bind_key( char32_t code_, Replxx::key_press_handler_t handler_, int editingMode_ ) {
 	_keyPressHandlers[editingMode_][code_] = handler_;
+}
+
+void Replxx::ReplxxImpl::bind_default_key( Replxx::key_press_handler_t handler_, int editingMode_ ) {
+	_defaultKeyPressHandlers[editingMode_] = handler_;
 }
 
 void Replxx::ReplxxImpl::bind_key_internal( char32_t code_, char const* actionName_, int editingMode_ ) {
@@ -1494,9 +1499,18 @@ int Replxx::ReplxxImpl::get_input_line( void ) {
 			continue;
 		}
 
+		Replxx::key_press_handler_t* handler( nullptr );
 		key_press_handlers_t::iterator it( _keyPressHandlers[_editingMode].find( c ) );
 		if ( it != _keyPressHandlers[_editingMode].end() ) {
-			next = it->second( c );
+			handler = &it->second;
+		} else {
+			key_press_handlers_t::iterator dit( _defaultKeyPressHandlers.find( _editingMode ) );
+			if ( dit != _defaultKeyPressHandlers.end() ) {
+				handler = &dit->second;
+			}
+		}
+		if ( handler ) {
+			next = ( *handler )( c );
 			if ( _modifiedState ) {
 				refresh_line();
 			} else if ( _moveCursor ) {

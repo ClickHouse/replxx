@@ -535,6 +535,16 @@ public:
 	 */
 	void bind_key( char32_t code, key_press_handler_t handler, int editingMode = 0 );
 
+	/*! \brief Bind user defined action to handle every key-press event without its own binding.
+	 *
+	 * Without such a handler, a key-press event without a binding inserts the character
+	 * in the editing mode 0 and is ignored in other editing modes.
+	 *
+	 * \param handler - use this handler to handle key-press events without their own binding.
+	 * \param editingMode - the editing mode in which the handler is used.
+	 */
+	void bind_default_key( key_press_handler_t handler, int editingMode = 0 );
+
 	/*! \brief Bind internal `replxx` action (by name) to handle given key-press event.
 	 *
 	 * Action names are the same as names of Replxx::ACTION enumerations
