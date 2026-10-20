@@ -363,6 +363,34 @@ char32_t Terminal::read_unicode_character( int escDelay_ ) {
 	}
 }
 
+#else // #ifndef _WIN32
+
+/**
+ * Read a character from the Windows console and return the Unicode (char32_t)
+ * character it encodes. `ReadConsoleW` hands over UTF-16, from which a surrogate
+ * pair is one code point.
+ *
+ * @return char32_t Unicode character, or zero if the console cannot be read
+ */
+char32_t Terminal::read_unicode_character( int ) {
+	wchar_t units[2] = {};
+	DWORD read( 0 );
+
+	if ( !ReadConsoleW( _consoleIn, &units[0], 1, &read, nullptr ) || ( read != 1 ) ) {
+		return 0;
+	}
+
+	/* A high surrogate is only half of a code point; the low half follows it. */
+	if ( ( units[0] >= 0xD800 ) && ( units[0] <= 0xDBFF ) ) {
+		if ( !ReadConsoleW( _consoleIn, &units[1], 1, &read, nullptr ) || ( read != 1 ) ) {
+			return 0;
+		}
+		return static_cast<char32_t>( 0x10000 + ( ( units[0] - 0xD800 ) << 10 ) + ( units[1] - 0xDC00 ) );
+	}
+
+	return static_cast<char32_t>( units[0] );
+}
+
 #endif // #ifndef _WIN32
 
 void beep(int fd_) {

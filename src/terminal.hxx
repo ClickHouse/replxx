@@ -78,9 +78,10 @@ public:
 	void jump_cursor( int, int );
 	void set_cursor_visible( bool );
 	void set_escdelay(int delay);
-#ifndef _WIN32
-	/* A positive delay limits the wait, zero waits indefinitely, a negative one does not wait. */
+	/* A positive delay limits the wait, zero waits indefinitely, a negative one does not wait.
+	 * On Windows the delay is ignored and the call blocks until the console delivers a character. */
 	char32_t read_unicode_character( int escDelay_ = 0 );
+#ifndef _WIN32
 	int read_verbatim( char32_t*, int );
 	int install_window_change_handler( void );
 #endif
