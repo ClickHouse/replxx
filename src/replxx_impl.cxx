@@ -1158,6 +1158,8 @@ void Replxx::ReplxxImpl::repaint( void ) {
 	for ( int i( _prompt._extraLines ); i < _prompt._cursorRowOffset; ++ i ) {
 		_terminal.write8( "\n", 1 );
 	}
+	// An explicit repaint must draw now: a skipped refresh is redone only by the input loop.
+	_lastRefreshTime = 0;
 	refresh_line( HINT_ACTION::REPAINT );
 }
 
