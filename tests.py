@@ -4,6 +4,7 @@ import pexpect
 import unittest
 import re
 import os
+import shutil
 import subprocess
 import signal
 import sys
@@ -391,6 +392,53 @@ class ReplxxTests( unittest.TestCase ):
 			"<c12>^C\r\r\n"
 			"<c1>"
 		)
+	@unittest.skipIf( shutil.which( "strace" ) is None, "strace is not installed" )
+	def test_one_write_per_refresh( self_ ):
+		"""Each keystroke redraws the input and the hint rows below it in a single `write`
+		wrapped in a synchronized update, so a terminal never shows a half-drawn screen
+		(e.g. the hint rows erased by `<ceos>` but not drawn yet)."""
+		BEGIN_SYNCHRONIZED_UPDATE = b"\x1b[?2026h"
+		END_SYNCHRONIZED_UPDATE = b"\x1b[?2026l"
+		keys = "color_b"
+		traceDir = tempfile.mkdtemp()
+		traceFile = os.path.join( traceDir, "trace" )
+		try:
+			os.environ["TERM"] = "xterm"
+			self_._replxx = pexpect.spawn(
+				"strace",
+				args = [ "-f", "-e", "trace=write", "-e", "signal=none", "-xx", "-s", "1000000", "-o", traceFile, "--", ReplxxTests._cxxSample_ ],
+				maxread = 1, encoding = "utf-8", dimensions = ( 25, 80 )
+			)
+			self_._replxx.expect( ReplxxTests._prompt_ )
+			for i, key in enumerate( keys ):
+				self_._replxx.send( key )
+				# the refresh ends by moving the cursor after the input (the prompt is 8 columns wide)
+				self_._replxx.expect_exact( "\x1b[{}G".format( 8 + i + 2 ) )
+			self_._replxx.send( sym_to_raw( "<c-c><c-d>" ) )
+			self_._replxx.expect( pexpect.EOF )
+			self_._replxx.close()
+			writeRe = re.compile( r'write\(1, "((?:\\x[0-9a-f]{2})*)", \d+\)' )
+			writes = []
+			with open( traceFile ) as f:
+				for line in f:
+					m = writeRe.search( line )
+					if m:
+						writes.append( bytes.fromhex( m.group( 1 ).replace( "\\x", "" ) ) )
+		finally:
+			shutil.rmtree( traceDir )
+		# the refreshes are the writes after the prompt and before `^C`
+		first = next( i for i, w in enumerate( writes ) if w.endswith( b"> " ) ) + 1
+		last = next( i for i, w in enumerate( writes ) if w.startswith( b"^C" ) )
+		refreshes = writes[first:last]
+		# one refresh for each key, and one more as `<c-c>` moves the cursor to the end of the input
+		self_.assertEqual( len( refreshes ), len( keys ) + 1 )
+		for w in refreshes:
+			self_.assertTrue( w.startswith( BEGIN_SYNCHRONIZED_UPDATE ), w )
+			self_.assertTrue( w.endswith( END_SYNCHRONIZED_UPDATE ), w )
+			self_.assertEqual( w.count( BEGIN_SYNCHRONIZED_UPDATE ), 1, w )
+		# the input is long enough to show the hint rows, so erasing and redrawing them is covered
+		self_.assertTrue( all( b"\x1b[J" in w for w in refreshes ) )
+		self_.assertTrue( any( b"\x1b[0;22;37m" in w or b"\x1b[0;90m" in w for w in refreshes ), refreshes )
 	def test_ctrl_z( self_ ):
 		self_.check_scenario(
 			"<up><c-z><cr><c-d>",

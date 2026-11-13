@@ -28,7 +28,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install g++ cmake python3-pexpect
+          sudo apt-get install g++ cmake python3-pexpect strace
 
       # Runs a single command using the runners shell
       - name: Build the code
