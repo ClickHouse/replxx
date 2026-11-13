@@ -533,6 +533,7 @@ char32_t Replxx::ReplxxImpl::read_char( HINT_ACTION hintAction_ ) {
 		}
 
 		std::lock_guard<std::mutex> l( _mutex );
+		Terminal::Frame frame( _terminal );
 		_terminal.set_cursor_visible( false );
 		clear_self_to_end_of_screen();
 
@@ -1094,6 +1095,8 @@ void Replxx::ReplxxImpl::refresh_line( HINT_ACTION hintAction_, bool refreshProm
 	// in other words _display should not be re-indented
 	replxx::virtual_render( _display.data(), static_cast<int>( _display.size() ), xEndOfInput, yEndOfInput, _prompt.screen_columns(), 0 );
 
+	// draw the whole frame at once, so the terminal does not show it half-drawn
+	Terminal::Frame frame( _terminal );
 	// position at the end of the prompt, clear to end of previous input
 	_terminal.set_cursor_visible( false );
 	if ( refreshPrompt_ ) {
@@ -1136,6 +1139,7 @@ void Replxx::ReplxxImpl::move_cursor( void ) {
 	int yCursorPos( 0 );
 	virtual_render( _data.get(), _pos, xCursorPos, yCursorPos );
 	// position the cursor
+	Terminal::Frame frame( _terminal );
 	_terminal.jump_cursor( xCursorPos, -( _prompt._cursorRowOffset - _prompt._extraLines - yCursorPos ) );
 	_prompt._cursorRowOffset = _prompt._extraLines + yCursorPos;
 	_oldPos = _pos;
@@ -1154,6 +1158,7 @@ int Replxx::ReplxxImpl::context_length() {
 }
 
 void Replxx::ReplxxImpl::repaint( void ) {
+	Terminal::Frame frame( _terminal );
 	_prompt.write();
 	for ( int i( _prompt._extraLines ); i < _prompt._cursorRowOffset; ++ i ) {
 		_terminal.write8( "\n", 1 );
@@ -1449,6 +1454,7 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 	}
 
 	// display the prompt on a new line, then redisplay the input buffer
+	Terminal::Frame frame( _terminal );
 	if (!stopList || c == Replxx::KEY::control('C')) {
 		_terminal.write8( "\n", 1 );
 	}
@@ -1496,6 +1502,7 @@ int Replxx::ReplxxImpl::get_input_line( void ) {
 		}
 
 		if (c == -2) {
+			Terminal::Frame frame( _terminal );
 			_prompt.write();
 			refresh_line();
 			continue;
@@ -2851,6 +2858,7 @@ int Replxx::ReplxxImpl::prompt_indentation( void ) {
  * @param pos   current cursor position within the buffer (0 <= pos <= len)
  */
 void Replxx::ReplxxImpl::dynamic_refresh(Prompt& oldPrompt, Prompt& newPrompt, char32_t* buf32, int len, int pos) {
+	Terminal::Frame frame( _terminal );
 	clear_self_to_end_of_screen( &oldPrompt );
 	// calculate the position of the end of the prompt
 	int xEndOfPrompt( 0 );

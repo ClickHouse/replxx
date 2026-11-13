@@ -183,7 +183,12 @@ termseq = {
 	"\x07": "<bell>",
 	"\x1b[2~": "<ins-key>",
 	"\x1b[?2004h": "<paste-on>",
-	"\x1b[?2004l": "<paste-off>"
+	"\x1b[?2004l": "<paste-off>",
+	# Synchronized update and cursor visibility around each redraw do not change the screen contents.
+	"\x1b[?2026h": "",
+	"\x1b[?2026l": "",
+	"\x1b[?25l": "",
+	"\x1b[?25h": ""
 }
 colRe = re.compile( "\\x1b\\[(\\d+)G" )
 upRe = re.compile( "\\x1b\\[(\\d+)A" )

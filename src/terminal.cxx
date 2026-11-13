@@ -137,6 +137,28 @@ Terminal::~Terminal( void ) {
 #endif
 }
 
+#ifndef _WIN32
+namespace {
+
+/* Write the whole buffer: a write to a terminal may be partial or interrupted by a signal, e.g. `SIGWINCH`. */
+bool write_all( int fd_, char const* data_, size_t size_ ) {
+	while ( size_ > 0 ) {
+		ssize_t nWritten( ::write( fd_, data_, size_ ) );
+		if ( nWritten < 0 ) {
+			if ( errno == EINTR ) {
+				continue;
+			}
+			return ( false );
+		}
+		data_ += nWritten;
+		size_ -= static_cast<size_t>( nWritten );
+	}
+	return ( true );
+}
+
+}
+#endif
+
 void Terminal::write32( char32_t const* text32, int len32 ) {
 	_utf8.assign( text32, len32 );
 	write8( _utf8.get(), _utf8.size() );
@@ -154,13 +176,49 @@ void Terminal::write8( char const* data_, int size_ ) {
 	if ( temporarilyEnabled ) {
 		disable_out();
 	}
-#else
-	int nWritten( write( _out_fd, data_, size_ ) );
-#endif
 	if ( nWritten != size_ ) {
 		throw std::runtime_error( "write failed" );
 	}
+#else
+	if ( _frameDepth > 0 ) {
+		_frame.append( data_, size_ );
+		return;
+	}
+	if ( ! write_all( _out_fd, data_, size_ ) ) {
+		throw std::runtime_error( "write failed" );
+	}
+#endif
 	return;
+}
+
+void Terminal::begin_frame( void ) {
+#ifndef _WIN32
+	/* The Win32 console API moves the cursor and clears the screen immediately, so the output is not collected there. */
+	++ _frameDepth;
+#endif
+}
+
+void Terminal::end_frame( void ) {
+#ifndef _WIN32
+	if ( _frameDepth == 0 ) {
+		return;
+	}
+	-- _frameDepth;
+	if ( ( _frameDepth > 0 ) || _frame.empty() ) {
+		return;
+	}
+	/* Synchronized update (DEC private mode 2026): the terminal holds the screen until the end of the frame.
+	 * Terminals that do not support it ignore an unknown private mode. */
+	static char const BEGIN_SYNCHRONIZED_UPDATE[] = "\033[?2026h";
+	static char const END_SYNCHRONIZED_UPDATE[] = "\033[?2026l";
+	_frame.insert( 0, BEGIN_SYNCHRONIZED_UPDATE, sizeof ( BEGIN_SYNCHRONIZED_UPDATE ) - 1 );
+	_frame.append( END_SYNCHRONIZED_UPDATE, sizeof ( END_SYNCHRONIZED_UPDATE ) - 1 );
+	bool written( write_all( _out_fd, _frame.data(), _frame.size() ) );
+	_frame.clear();
+	if ( ! written ) {
+		throw std::runtime_error( "write failed" );
+	}
+#endif
 }
 
 int Terminal::get_screen_columns( void ) {
@@ -722,12 +780,14 @@ void Terminal::clear_screen( CLEAR_SCREEN clearScreen_ ) {
 #ifdef _WIN32
 	if ( _autoEscape ) {
 #endif
-		if ( clearScreen_ == CLEAR_SCREEN::WHOLE ) {
-			char const clearCode[] = "\033c\033[H\033[2J\033[0m";
-			static_cast<void>( write(_out_fd, clearCode, sizeof ( clearCode ) - 1) >= 0 );
+		char const clearWholeCode[] = "\033c\033[H\033[2J\033[0m";
+		char const clearToEndCode[] = "\033[J";
+		char const* clearCode( clearScreen_ == CLEAR_SCREEN::WHOLE ? clearWholeCode : clearToEndCode );
+		size_t clearCodeSize( clearScreen_ == CLEAR_SCREEN::WHOLE ? sizeof ( clearWholeCode ) - 1 : sizeof ( clearToEndCode ) - 1 );
+		if ( _frameDepth > 0 ) {
+			_frame.append( clearCode, clearCodeSize );
 		} else {
-			char const clearCode[] = "\033[J";
-			static_cast<void>( write(_out_fd, clearCode, sizeof ( clearCode ) - 1) >= 0 );
+			static_cast<void>( write(_out_fd, clearCode, clearCodeSize) >= 0 );
 		}
 		return;
 #ifdef _WIN32
@@ -786,7 +846,15 @@ void Terminal::set_cursor_visible( bool visible_ ) {
 	return;
 }
 #else
-void Terminal::set_cursor_visible( bool ) {}
+void Terminal::set_cursor_visible( bool visible_ ) {
+	static char const SHOW_CURSOR[] = "\033[?25h";
+	static char const HIDE_CURSOR[] = "\033[?25l";
+	if ( visible_ ) {
+		write8( SHOW_CURSOR, sizeof ( SHOW_CURSOR ) - 1 );
+	} else {
+		write8( HIDE_CURSOR, sizeof ( HIDE_CURSOR ) - 1 );
+	}
+}
 #endif
 
 #ifndef _WIN32
