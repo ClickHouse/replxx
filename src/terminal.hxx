@@ -2,12 +2,15 @@
 #define REPLXX_IO_HXX_INCLUDED 1
 
 #include <deque>
+#include <exception>
+#include <string>
 
 #ifdef _WIN32
 #include <vector>
 #include <windows.h>
 #else
 #include <termios.h>
+#include <signal.h>
 #endif
 
 #include "utf8string.hxx"
@@ -40,13 +43,22 @@ private:
 	struct termios _origTermios; /* in order to restore at exit */
 	struct termios _rawModeTermios; /* in order to reset raw mode after callbacks */
 	int _interrupt[2];
+	char8_t _utf8String[5] = {}; /* partially read UTF-8 sequence */
+	size_t _utf8Count = 0;
+	bool _windowChangeHandlerInstalled = false; /* whether this terminal receives `SIGWINCH` */
+	struct sigaction _origWindowChangeHandler;
 #endif
+	int _escDelay;
 	bool _rawMode; /* for destructor to check if restore is needed */
 	Utf8String _utf8;
+	/* Output collected while a frame is open, see `begin_frame`. */
+	std::string _frame;
+	int _frameDepth = 0;
 
 	int _in_fd = 0;
 	int _out_fd = 1;
 	int _err_fd = 2;
+
 public:
 	enum class CLEAR_SCREEN {
 		WHOLE,
@@ -70,7 +82,37 @@ public:
 	void notify_event( EVENT_TYPE );
 	void jump_cursor( int, int );
 	void set_cursor_visible( bool );
+	void set_escdelay(int delay);
+	/* Collect the output until the matching `end_frame` and send it in one `write`,
+	 * wrapped in a synchronized update, so the terminal never shows a half-drawn screen.
+	 * Frames nest: only the outermost one sends the output. */
+	void begin_frame( void );
+	void end_frame( void );
+	class Frame {
+		Terminal& _terminal;
+		int _uncaughtExceptions;
+	public:
+		explicit Frame( Terminal& terminal_ )
+			: _terminal( terminal_ )
+			, _uncaughtExceptions( std::uncaught_exceptions() ) {
+			_terminal.begin_frame();
+		}
+		~Frame( void ) noexcept( false ) {
+			if ( std::uncaught_exceptions() > _uncaughtExceptions ) {
+				try {
+					_terminal.end_frame();
+				} catch ( ... ) {
+				}
+			} else {
+				_terminal.end_frame();
+			}
+		}
+		Frame( Frame const& ) = delete;
+		Frame& operator = ( Frame const& ) = delete;
+	};
 #ifndef _WIN32
+	/* A positive delay limits the wait, zero waits indefinitely, a negative one does not wait. */
+	char32_t read_unicode_character( int escDelay_ = 0 );
 	int read_verbatim( char32_t*, int );
 	int install_window_change_handler( void );
 #endif
@@ -85,7 +127,6 @@ private:
 };
 
 void beep(int fd_);
-char32_t read_unicode_character(int in_fd_);
 
 namespace tty {
 

@@ -1,9 +1,9 @@
+#include <atomic>
 #include <memory>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <array>
-#include <atomic>
 #include <stdexcept>
 
 #ifdef _WIN32
@@ -76,9 +76,11 @@ bool out( is_a_tty( 1 ) );
 }
 
 #ifndef _WIN32
-/* Several terminals can be in the raw mode at once in different threads of one process
- * (e.g. the clients embedded into a server), so the pointer is atomic. */
-std::atomic<Terminal*> _terminal_{ nullptr };
+/* The terminal that receives the `SIGWINCH` notifications. Signals are process-wide, so only
+ * a terminal that installed the window change handler registers itself here: several terminals
+ * may live in one process (e.g. client sessions embedded into a server, attached to their own
+ * pseudo-terminals) and they must not overwrite each other's registration. */
+static std::atomic<Terminal*> _terminal_{ nullptr };
 static void WindowSizeChanged( int ) {
 	Terminal* terminal( _terminal_.load() );
 	if ( ! terminal ) {
@@ -106,6 +108,7 @@ Terminal::Terminal(int in_fd_, int out_fd_)
 	, _rawModeTermios()
 	, _interrupt()
 #endif
+	, _escDelay(0)
 	, _rawMode( false )
 	, _utf8()
 	, _in_fd(in_fd_)
@@ -118,6 +121,11 @@ Terminal::Terminal(int in_fd_, int out_fd_)
 }
 
 Terminal::~Terminal( void ) {
+#ifndef _WIN32
+	if ( _windowChangeHandlerInstalled ) {
+		sigaction( SIGWINCH, &_origWindowChangeHandler, nullptr );
+	}
+#endif
 	if ( _rawMode ) {
 		disable_raw_mode();
 	}
@@ -128,6 +136,28 @@ Terminal::~Terminal( void ) {
 	static_cast<void>( ::close( _interrupt[1] ) == 0 );
 #endif
 }
+
+#ifndef _WIN32
+namespace {
+
+/* Write the whole buffer: a write to a terminal may be partial or interrupted by a signal, e.g. `SIGWINCH`. */
+bool write_all( int fd_, char const* data_, size_t size_ ) {
+	while ( size_ > 0 ) {
+		ssize_t nWritten( ::write( fd_, data_, size_ ) );
+		if ( nWritten < 0 ) {
+			if ( errno == EINTR ) {
+				continue;
+			}
+			return ( false );
+		}
+		data_ += nWritten;
+		size_ -= static_cast<size_t>( nWritten );
+	}
+	return ( true );
+}
+
+}
+#endif
 
 void Terminal::write32( char32_t const* text32, int len32 ) {
 	_utf8.assign( text32, len32 );
@@ -146,13 +176,49 @@ void Terminal::write8( char const* data_, int size_ ) {
 	if ( temporarilyEnabled ) {
 		disable_out();
 	}
-#else
-	int nWritten( write( _out_fd, data_, size_ ) );
-#endif
 	if ( nWritten != size_ ) {
 		throw std::runtime_error( "write failed" );
 	}
+#else
+	if ( _frameDepth > 0 ) {
+		_frame.append( data_, size_ );
+		return;
+	}
+	if ( ! write_all( _out_fd, data_, size_ ) ) {
+		throw std::runtime_error( "write failed" );
+	}
+#endif
 	return;
+}
+
+void Terminal::begin_frame( void ) {
+#ifndef _WIN32
+	/* The Win32 console API moves the cursor and clears the screen immediately, so the output is not collected there. */
+	++ _frameDepth;
+#endif
+}
+
+void Terminal::end_frame( void ) {
+#ifndef _WIN32
+	if ( _frameDepth == 0 ) {
+		return;
+	}
+	-- _frameDepth;
+	if ( ( _frameDepth > 0 ) || _frame.empty() ) {
+		return;
+	}
+	/* Synchronized update (DEC private mode 2026): the terminal holds the screen until the end of the frame.
+	 * Terminals that do not support it ignore an unknown private mode. */
+	static char const BEGIN_SYNCHRONIZED_UPDATE[] = "\033[?2026h";
+	static char const END_SYNCHRONIZED_UPDATE[] = "\033[?2026l";
+	_frame.insert( 0, BEGIN_SYNCHRONIZED_UPDATE, sizeof ( BEGIN_SYNCHRONIZED_UPDATE ) - 1 );
+	_frame.append( END_SYNCHRONIZED_UPDATE, sizeof ( END_SYNCHRONIZED_UPDATE ) - 1 );
+	bool written( write_all( _out_fd, _frame.data(), _frame.size() ) );
+	_frame.clear();
+	if ( ! written ) {
+		throw std::runtime_error( "write failed" );
+	}
+#endif
 }
 
 int Terminal::get_screen_columns( void ) {
@@ -261,7 +327,9 @@ int Terminal::enable_raw_mode( void ) {
 	}
 
 #ifndef _WIN32
-	_terminal_ = this;
+	if ( _windowChangeHandlerInstalled ) {
+		_terminal_.store( this );
+	}
 #endif
 	return ( 0 );
 }
@@ -284,6 +352,10 @@ int Terminal::reset_raw_mode( void ) {
 #endif
 }
 
+void Terminal::set_escdelay(int delay) {
+	_escDelay = delay;
+}
+
 void Terminal::disable_raw_mode(void) {
 	if ( ! _rawMode ) {
 		return;
@@ -294,8 +366,8 @@ void Terminal::disable_raw_mode(void) {
 	SetConsoleCP( _inputCodePage );
 	_consoleIn = INVALID_HANDLE_VALUE;
 #else
-	Terminal* self( this );
-	_terminal_.compare_exchange_strong( self, nullptr );
+	Terminal* expected( this );
+	_terminal_.compare_exchange_strong( expected, nullptr );
 	if ( tcsetattr( _in_fd, TCSADRAIN, &_origTermios ) == -1 ) {
 		return;
 	}
@@ -312,36 +384,39 @@ void Terminal::disable_raw_mode(void) {
  *
  * @return char32_t Unicode character
  */
-char32_t read_unicode_character(int in_fd_) {
-	/* The state of the sequence being read is per thread: several terminals can read in different
-	 * threads of one process. */
-	static thread_local char8_t utf8String[5];
-	static thread_local size_t utf8Count = 0;
+char32_t Terminal::read_unicode_character( int escDelay_ ) {
 	while (true) {
 		char8_t c;
 
 		/* Continue reading if interrupted by signal. */
 		ssize_t nread;
+		struct pollfd fd = { .fd = _in_fd, .events = POLLIN };
 		do {
-			nread = read( in_fd_, &c, 1 );
-		} while ((nread == -1) && (errno == EINTR));
+			errno = 0;
+			/* A positive delay limits the wait, zero waits indefinitely, a negative one does not wait. */
+			nread = poll(&fd, 1, escDelay_ > 0 ? escDelay_ : ( escDelay_ < 0 ? 0 : -1 ));
+		} while ((nread < 0) && (errno == EINTR || errno == EAGAIN));
+
+		/* Read on any event, not only `POLLIN`: on a hangup or an error without pending input, `read`
+		 * reports the end of input or the error, and `c` is not used. */
+		if (nread > 0) nread = read( _in_fd, &c, 1 );
 
 		if (nread <= 0) return 0;
 		if (c <= 0x7F || locale::is8BitEncoding) { // short circuit ASCII
-			utf8Count = 0;
+			_utf8Count = 0;
 			return c;
-		} else if (utf8Count < sizeof(utf8String) - 1) {
-			utf8String[utf8Count++] = c;
-			utf8String[utf8Count] = 0;
+		} else if (_utf8Count < sizeof(_utf8String) - 1) {
+			_utf8String[_utf8Count++] = c;
+			_utf8String[_utf8Count] = 0;
 			char32_t unicodeChar[2];
 			int ucharCount( 0 );
-			ConversionResult res = copyString8to32(unicodeChar, 2, ucharCount, utf8String);
+			ConversionResult res = copyString8to32(unicodeChar, 2, ucharCount, _utf8String);
 			if (res == conversionOK && ucharCount) {
-				utf8Count = 0;
+				_utf8Count = 0;
 				return unicodeChar[0];
 			}
 		} else {
-			utf8Count = 0; // this shouldn't happen: got four bytes but no UTF-8 character
+			_utf8Count = 0; // this shouldn't happen: got four bytes but no UTF-8 character
 		}
 	}
 }
@@ -474,8 +549,14 @@ char32_t Terminal::read_char( void ) {
 					continue; // in raw mode, ReadConsoleInput shows shift, ctrl - ignore them
 			}
 		} else if ( key == Replxx::KEY::ESCAPE ) { // ESC, set flag for later
-			escSeen = true;
-			continue;
+			if ( _escDelay > 0 ) {
+				c = key;
+				break;
+			}
+			else {
+				escSeen = true;
+				continue;
+			}
 		} else if ( ( key >= 0xD800 ) && ( key <= 0xDBFF ) ) {
 			highSurrogate = key - 0xD800;
 			continue;
@@ -501,7 +582,7 @@ char32_t Terminal::read_char( void ) {
 	}
 
 #else
-	c = read_unicode_character(_in_fd);
+	c = read_unicode_character();
 	if (c == 0) {
 		return 0;
 	}
@@ -565,10 +646,11 @@ char32_t Terminal::read_char( void ) {
 	}
 #endif // __REPLXX_DEBUG__
 
-	c = EscapeSequenceProcessing::doDispatch(_in_fd, _err_fd, c);
-	if ( is_control_code( c ) ) {
+	c = EscapeSequenceProcessing::doDispatch(*this, _err_fd, c, _escDelay);
+	if ( !(_escDelay && c == 27) && is_control_code( c ) ) {
 		c = Replxx::KEY::control( control_to_human( c ) );
 	}
+
 #endif // #_WIN32
 	return ( c );
 }
@@ -698,12 +780,14 @@ void Terminal::clear_screen( CLEAR_SCREEN clearScreen_ ) {
 #ifdef _WIN32
 	if ( _autoEscape ) {
 #endif
-		if ( clearScreen_ == CLEAR_SCREEN::WHOLE ) {
-			char const clearCode[] = "\033c\033[H\033[2J\033[0m";
-			static_cast<void>( write(_out_fd, clearCode, sizeof ( clearCode ) - 1) >= 0 );
+		char const clearWholeCode[] = "\033c\033[H\033[2J\033[0m";
+		char const clearToEndCode[] = "\033[J";
+		char const* clearCode( clearScreen_ == CLEAR_SCREEN::WHOLE ? clearWholeCode : clearToEndCode );
+		size_t clearCodeSize( clearScreen_ == CLEAR_SCREEN::WHOLE ? sizeof ( clearWholeCode ) - 1 : sizeof ( clearToEndCode ) - 1 );
+		if ( _frameDepth > 0 ) {
+			_frame.append( clearCode, clearCodeSize );
 		} else {
-			char const clearCode[] = "\033[J";
-			static_cast<void>( write(_out_fd, clearCode, sizeof ( clearCode ) - 1) >= 0 );
+			static_cast<void>( write(_out_fd, clearCode, clearCodeSize) >= 0 );
 		}
 		return;
 #ifdef _WIN32
@@ -762,17 +846,26 @@ void Terminal::set_cursor_visible( bool visible_ ) {
 	return;
 }
 #else
-void Terminal::set_cursor_visible( bool ) {}
+void Terminal::set_cursor_visible( bool visible_ ) {
+	static char const SHOW_CURSOR[] = "\033[?25h";
+	static char const HIDE_CURSOR[] = "\033[?25l";
+	if ( visible_ ) {
+		write8( SHOW_CURSOR, sizeof ( SHOW_CURSOR ) - 1 );
+	} else {
+		write8( HIDE_CURSOR, sizeof ( HIDE_CURSOR ) - 1 );
+	}
+}
 #endif
 
 #ifndef _WIN32
 int Terminal::read_verbatim( char32_t* buffer_, int size_ ) {
 	int len( 0 );
-	buffer_[len ++] = read_unicode_character(_in_fd);
+	buffer_[len ++] = read_unicode_character();
 	int statusFlags( ::fcntl( _in_fd, F_GETFL, 0 ) );
 	::fcntl( _in_fd, F_SETFL, statusFlags | O_NONBLOCK );
 	while ( len < size_ ) {
-		char32_t c( read_unicode_character(_in_fd) );
+		/* Take only the input that is already available: the descriptor is non-blocking, but `poll` is not. */
+		char32_t c( read_unicode_character( -1 ) );
 		if ( c == 0 ) {
 			break;
 		}
@@ -788,8 +881,12 @@ int Terminal::install_window_change_handler( void ) {
 	sa.sa_flags = 0;
 	sa.sa_handler = &WindowSizeChanged;
 
-	if (sigaction(SIGWINCH, &sa, nullptr) == -1) {
+	if (sigaction(SIGWINCH, &sa, &_origWindowChangeHandler) == -1) {
 		return errno;
+	}
+	_windowChangeHandlerInstalled = true;
+	if ( _rawMode ) {
+		_terminal_.store( this );
 	}
 	return 0;
 }

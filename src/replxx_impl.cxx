@@ -55,6 +55,13 @@ char const MOVE_CURSOR_ONE_WORD_LEFT[]         = "move_cursor_one_word_left";
 char const MOVE_CURSOR_ONE_WORD_RIGHT[]        = "move_cursor_one_word_right";
 char const MOVE_CURSOR_ONE_SUBWORD_LEFT[]      = "move_cursor_one_subword_left";
 char const MOVE_CURSOR_ONE_SUBWORD_RIGHT[]     = "move_cursor_one_subword_right";
+char const MOVE_CURSOR_TO_NEXT_WORD[]          = "move_cursor_to_next_word";
+char const MOVE_CURSOR_TO_NEXT_SUBWORD[]       = "move_cursor_to_next_subword";
+char const MOVE_CURSOR_TO_PREVIOUS_WORD[]      = "move_cursor_to_previous_word";
+char const MOVE_CURSOR_TO_PREVIOUS_SUBWORD[]   = "move_cursor_to_previous_subword";
+char const MOVE_CURSOR_TO_CHARACTER[]          = "move_cursor_to_character";
+char const MOVE_CURSOR_TO_CHARACTER_REVERSE[]  = "move_cursor_to_character_reverse";
+char const MOVE_CURSOR_TO_LINE[]               = "move_cursor_to_line";
 char const KILL_TO_WHITESPACE_ON_LEFT[]        = "kill_to_whitespace_on_left";
 char const KILL_TO_END_OF_WORD[]               = "kill_to_end_of_word";
 char const KILL_TO_END_OF_SUBWORD[]            = "kill_to_end_of_subword";
@@ -77,6 +84,10 @@ char const SEND_EOF[]                          = "send_eof";
 char const TOGGLE_OVERWRITE_MODE[]             = "toggle_overwrite_mode";
 char const DELETE_CHARACTER_UNDER_CURSOR[]     = "delete_character_under_cursor";
 char const DELETE_CHARACTER_LEFT_OF_CURSOR[]   = "delete_character_left_of_cursor";
+char const DELETE_UNTIL_NEXT_WORD[]            = "delete_until_next_word";
+char const DELETE_UNTIL_NEXT_SUBWORD[]         = "delete_until_next_subword";
+char const DELETE_UNTIL_CHARACTER[]            = "delete_until_character";
+char const DELETE_BACKWARDS_UNTIL_CHARACTER[]  = "delete_backwards_until_character";
 char const COMMIT_LINE[]                       = "commit_line";
 char const CLEAR_SCREEN[]                      = "clear_screen";
 char const COMPLETE_NEXT[]                     = "complete_next";
@@ -175,7 +186,9 @@ Replxx::ReplxxImpl::ReplxxImpl( std::istream & in_, std::ostream & out_, int in_
 	, _noColor( false )
 	, _indentMultiline( true )
 	, _namedActions()
+	, _editingMode( 0 )
 	, _keyPressHandlers()
+	, _defaultKeyPressHandlers()
 	, _terminal(in_fd_, out_fd_)
 	, _currentThread()
 	, _prompt( _terminal )
@@ -218,6 +231,8 @@ Replxx::ReplxxImpl::ReplxxImpl( std::istream & in_, std::ostream & out_, int in_
 	_namedActions[action_names::MOVE_CURSOR_RIGHT]                 = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::MOVE_CURSOR_RIGHT,                 _1 );
 	_namedActions[action_names::MOVE_CURSOR_ONE_WORD_LEFT]         = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::MOVE_CURSOR_ONE_WORD_LEFT,         _1 );
 	_namedActions[action_names::MOVE_CURSOR_ONE_WORD_RIGHT]        = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::MOVE_CURSOR_ONE_WORD_RIGHT,        _1 );
+	_namedActions[action_names::MOVE_CURSOR_TO_NEXT_WORD]        = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::MOVE_CURSOR_TO_NEXT_WORD,            _1 );
+	_namedActions[action_names::MOVE_CURSOR_TO_NEXT_SUBWORD]        = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::MOVE_CURSOR_TO_NEXT_SUBWORD,      _1 );
 	_namedActions[action_names::MOVE_CURSOR_ONE_SUBWORD_LEFT]      = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::MOVE_CURSOR_ONE_SUBWORD_LEFT,      _1 );
 	_namedActions[action_names::MOVE_CURSOR_ONE_SUBWORD_RIGHT]     = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::MOVE_CURSOR_ONE_SUBWORD_RIGHT,     _1 );
 	_namedActions[action_names::KILL_TO_WHITESPACE_ON_LEFT]        = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::KILL_TO_WHITESPACE_ON_LEFT,        _1 );
@@ -242,6 +257,10 @@ Replxx::ReplxxImpl::ReplxxImpl( std::istream & in_, std::ostream & out_, int in_
 	_namedActions[action_names::TOGGLE_OVERWRITE_MODE]             = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::TOGGLE_OVERWRITE_MODE,             _1 );
 	_namedActions[action_names::DELETE_CHARACTER_UNDER_CURSOR]     = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::DELETE_CHARACTER_UNDER_CURSOR,     _1 );
 	_namedActions[action_names::DELETE_CHARACTER_LEFT_OF_CURSOR]   = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::DELETE_CHARACTER_LEFT_OF_CURSOR,   _1 );
+	_namedActions[action_names::DELETE_UNTIL_NEXT_WORD]            = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::DELETE_UNTIL_NEXT_WORD,            _1 );
+	_namedActions[action_names::DELETE_UNTIL_NEXT_SUBWORD]         = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::DELETE_UNTIL_NEXT_SUBWORD,         _1 );
+	_namedActions[action_names::DELETE_UNTIL_CHARACTER]            = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::DELETE_UNTIL_CHARACTER,            _1 );
+	_namedActions[action_names::DELETE_BACKWARDS_UNTIL_CHARACTER]  = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::DELETE_BACKWARDS_UNTIL_CHARACTER,  _1 );
 	_namedActions[action_names::COMMIT_LINE]                       = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::COMMIT_LINE,                       _1 );
 	_namedActions[action_names::CLEAR_SCREEN]                      = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::CLEAR_SCREEN,                      _1 );
 	_namedActions[action_names::COMPLETE_NEXT]                     = std::bind( &ReplxxImpl::invoke, this, Replxx::ACTION::COMPLETE_NEXT,                     _1 );
@@ -371,6 +390,10 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::invoke( Replxx::ACTION action_, char32
 		case ( Replxx::ACTION::NEW_LINE ):                          return ( action( RESET_KILL_ACTION | HISTORY_RECALL_MOST_RECENT, &Replxx::ReplxxImpl::new_line, code ) );
 		case ( Replxx::ACTION::DELETE_CHARACTER_UNDER_CURSOR ):     return ( action( RESET_KILL_ACTION | HISTORY_RECALL_MOST_RECENT, &Replxx::ReplxxImpl::delete_character, code ) );
 		case ( Replxx::ACTION::DELETE_CHARACTER_LEFT_OF_CURSOR ):   return ( action( RESET_KILL_ACTION | HISTORY_RECALL_MOST_RECENT, &Replxx::ReplxxImpl::backspace_character, code ) );
+		case ( Replxx::ACTION::DELETE_UNTIL_NEXT_WORD ):            return ( action( RESET_KILL_ACTION | HISTORY_RECALL_MOST_RECENT, &Replxx::ReplxxImpl::delete_until_next_word<false>, code ) );
+		case ( Replxx::ACTION::DELETE_UNTIL_NEXT_SUBWORD ):         return ( action( RESET_KILL_ACTION | HISTORY_RECALL_MOST_RECENT, &Replxx::ReplxxImpl::delete_until_next_word<true>, code ) );
+		case ( Replxx::ACTION::DELETE_UNTIL_CHARACTER ):            return ( action( RESET_KILL_ACTION | HISTORY_RECALL_MOST_RECENT, &Replxx::ReplxxImpl::delete_until_character, code ) );
+		case ( Replxx::ACTION::DELETE_BACKWARDS_UNTIL_CHARACTER ):  return ( action( RESET_KILL_ACTION | HISTORY_RECALL_MOST_RECENT, &Replxx::ReplxxImpl::delete_backwards_until_character, code ) );
 		case ( Replxx::ACTION::KILL_TO_END_OF_LINE ):               return ( action( WANT_REFRESH | SET_KILL_ACTION | HISTORY_RECALL_MOST_RECENT, &Replxx::ReplxxImpl::kill_to_end_of_line, code ) );
 		case ( Replxx::ACTION::KILL_TO_BEGINING_OF_LINE ):          return ( action( SET_KILL_ACTION | HISTORY_RECALL_MOST_RECENT, &Replxx::ReplxxImpl::kill_to_begining_of_line, code ) );
 		case ( Replxx::ACTION::KILL_TO_END_OF_WORD ):               return ( action( SET_KILL_ACTION | HISTORY_RECALL_MOST_RECENT, &Replxx::ReplxxImpl::kill_word_to_right<false>, code ) );
@@ -385,6 +408,13 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::invoke( Replxx::ACTION action_, char32
 		case ( Replxx::ACTION::MOVE_CURSOR_TO_END_OF_LINE ):        return ( action( MOVE_CURSOR | RESET_KILL_ACTION, &Replxx::ReplxxImpl::go_to_end_of_line, code ) );
 		case ( Replxx::ACTION::MOVE_CURSOR_ONE_WORD_LEFT ):         return ( action( MOVE_CURSOR | RESET_KILL_ACTION, &Replxx::ReplxxImpl::move_one_word_left<false>, code ) );
 		case ( Replxx::ACTION::MOVE_CURSOR_ONE_WORD_RIGHT ):        return ( action( MOVE_CURSOR | RESET_KILL_ACTION, &Replxx::ReplxxImpl::move_one_word_right<false>, code ) );
+		case ( Replxx::ACTION::MOVE_CURSOR_TO_NEXT_WORD ):          return ( action( MOVE_CURSOR | RESET_KILL_ACTION, &Replxx::ReplxxImpl::move_to_next_word<false>, code ) );
+		case ( Replxx::ACTION::MOVE_CURSOR_TO_NEXT_SUBWORD ):       return ( action( MOVE_CURSOR | RESET_KILL_ACTION, &Replxx::ReplxxImpl::move_to_next_word<true>, code ) );
+		case ( Replxx::ACTION::MOVE_CURSOR_TO_PREVIOUS_WORD ):      return ( action( MOVE_CURSOR | RESET_KILL_ACTION, &Replxx::ReplxxImpl::move_to_previous_word<false>, code ) );
+		case ( Replxx::ACTION::MOVE_CURSOR_TO_PREVIOUS_SUBWORD ):   return ( action( MOVE_CURSOR | RESET_KILL_ACTION, &Replxx::ReplxxImpl::move_to_previous_word<true>, code ) );
+		case ( Replxx::ACTION::MOVE_CURSOR_TO_CHARACTER ):          return ( action( MOVE_CURSOR | RESET_KILL_ACTION, &Replxx::ReplxxImpl::move_to_character, code ) );
+		case ( Replxx::ACTION::MOVE_CURSOR_TO_CHARACTER_REVERSE ):  return ( action( MOVE_CURSOR | RESET_KILL_ACTION, &Replxx::ReplxxImpl::move_to_character_reverse, code ) );
+		case ( Replxx::ACTION::MOVE_CURSOR_TO_LINE ):               return ( action( MOVE_CURSOR | RESET_KILL_ACTION, &Replxx::ReplxxImpl::move_to_line, code ) );
 		case ( Replxx::ACTION::MOVE_CURSOR_ONE_SUBWORD_LEFT ):      return ( action( MOVE_CURSOR | RESET_KILL_ACTION, &Replxx::ReplxxImpl::move_one_word_left<true>, code ) );
 		case ( Replxx::ACTION::MOVE_CURSOR_ONE_SUBWORD_RIGHT ):     return ( action( MOVE_CURSOR | RESET_KILL_ACTION, &Replxx::ReplxxImpl::move_one_word_right<true>, code ) );
 		case ( Replxx::ACTION::MOVE_CURSOR_LEFT ):                  return ( action( MOVE_CURSOR | RESET_KILL_ACTION, &Replxx::ReplxxImpl::move_one_char_left, code ) );
@@ -432,17 +462,21 @@ bool Replxx::ReplxxImpl::history_recalled( void ) const {
 	return ( _historyRecalled );
 }
 
-void Replxx::ReplxxImpl::bind_key( char32_t code_, Replxx::key_press_handler_t handler_ ) {
-	_keyPressHandlers[code_] = handler_;
+void Replxx::ReplxxImpl::bind_key( char32_t code_, Replxx::key_press_handler_t handler_, int editingMode_ ) {
+	_keyPressHandlers[editingMode_][code_] = handler_;
 }
 
-void Replxx::ReplxxImpl::bind_key_internal( char32_t code_, char const* actionName_ ) {
+void Replxx::ReplxxImpl::bind_default_key( Replxx::key_press_handler_t handler_, int editingMode_ ) {
+	_defaultKeyPressHandlers[editingMode_] = handler_;
+}
+
+void Replxx::ReplxxImpl::bind_key_internal( char32_t code_, char const* actionName_, int editingMode_ ) {
 	named_actions_t::const_iterator it( _namedActions.find( actionName_ ) );
 	if ( it == _namedActions.end() ) {
 		throw std::runtime_error( std::string( "replxx: Unknown action name: " ).append( actionName_ ) );
 	}
 	if ( !! it->second ) {
-		bind_key( code_, it->second );
+		bind_key( code_, it->second, editingMode_ );
 	}
 }
 
@@ -499,6 +533,7 @@ char32_t Replxx::ReplxxImpl::read_char( HINT_ACTION hintAction_ ) {
 		}
 
 		std::lock_guard<std::mutex> l( _mutex );
+		Terminal::Frame frame( _terminal );
 		_terminal.set_cursor_visible( false );
 		clear_self_to_end_of_screen();
 
@@ -1039,6 +1074,11 @@ void Replxx::ReplxxImpl::refresh_line( HINT_ACTION hintAction_, bool refreshProm
 		return;
 	}
 	_refreshSkipped = false;
+	// The terminal may be resized without `SIGWINCH`, e.g. when the window change handler
+	// is not installed, so the width is re-read on every refresh.
+	if ( _prompt.screen_columns() != _terminal.get_screen_columns() ) {
+		_prompt.update_screen_columns();
+	}
 	render( hintAction_ );
 	handle_hints( hintAction_ );
 	// calculate the desired position of the cursor
@@ -1055,6 +1095,8 @@ void Replxx::ReplxxImpl::refresh_line( HINT_ACTION hintAction_, bool refreshProm
 	// in other words _display should not be re-indented
 	replxx::virtual_render( _display.data(), static_cast<int>( _display.size() ), xEndOfInput, yEndOfInput, _prompt.screen_columns(), 0 );
 
+	// draw the whole frame at once, so the terminal does not show it half-drawn
+	Terminal::Frame frame( _terminal );
 	// position at the end of the prompt, clear to end of previous input
 	_terminal.set_cursor_visible( false );
 	if ( refreshPrompt_ ) {
@@ -1097,6 +1139,7 @@ void Replxx::ReplxxImpl::move_cursor( void ) {
 	int yCursorPos( 0 );
 	virtual_render( _data.get(), _pos, xCursorPos, yCursorPos );
 	// position the cursor
+	Terminal::Frame frame( _terminal );
 	_terminal.jump_cursor( xCursorPos, -( _prompt._cursorRowOffset - _prompt._extraLines - yCursorPos ) );
 	_prompt._cursorRowOffset = _prompt._extraLines + yCursorPos;
 	_oldPos = _pos;
@@ -1115,10 +1158,13 @@ int Replxx::ReplxxImpl::context_length() {
 }
 
 void Replxx::ReplxxImpl::repaint( void ) {
+	Terminal::Frame frame( _terminal );
 	_prompt.write();
 	for ( int i( _prompt._extraLines ); i < _prompt._cursorRowOffset; ++ i ) {
 		_terminal.write8( "\n", 1 );
 	}
+	// An explicit repaint must draw now: a skipped refresh is redone only by the input loop.
+	_lastRefreshTime = 0;
 	refresh_line( HINT_ACTION::REPAINT );
 }
 
@@ -1408,6 +1454,7 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 	}
 
 	// display the prompt on a new line, then redisplay the input buffer
+	Terminal::Frame frame( _terminal );
 	if (!stopList || c == Replxx::KEY::control('C')) {
 		_terminal.write8( "\n", 1 );
 	}
@@ -1455,20 +1502,30 @@ int Replxx::ReplxxImpl::get_input_line( void ) {
 		}
 
 		if (c == -2) {
+			Terminal::Frame frame( _terminal );
 			_prompt.write();
 			refresh_line();
 			continue;
 		}
 
-		key_press_handlers_t::iterator it( _keyPressHandlers.find( c ) );
-		if ( it != _keyPressHandlers.end() ) {
-			next = it->second( c );
+		Replxx::key_press_handler_t* handler( nullptr );
+		key_press_handlers_t::iterator it( _keyPressHandlers[_editingMode].find( c ) );
+		if ( it != _keyPressHandlers[_editingMode].end() ) {
+			handler = &it->second;
+		} else {
+			key_press_handlers_t::iterator dit( _defaultKeyPressHandlers.find( _editingMode ) );
+			if ( dit != _defaultKeyPressHandlers.end() ) {
+				handler = &dit->second;
+			}
+		}
+		if ( handler ) {
+			next = ( *handler )( c );
 			if ( _modifiedState ) {
 				refresh_line();
 			} else if ( _moveCursor ) {
 				move_cursor();
 			}
-		} else {
+		} else if ( _editingMode == 0 ) {
 			next = action( RESET_KILL_ACTION | HISTORY_RECALL_MOST_RECENT, &Replxx::ReplxxImpl::insert_character, c );
 		}
 	}
@@ -1640,6 +1697,91 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::move_one_word_right( char32_t ) {
 	return ( Replxx::ACTION_RESULT::CONTINUE );
 }
 
+template <bool subword>
+Replxx::ACTION_RESULT Replxx::ReplxxImpl::move_to_next_word( char32_t ) {
+	if (_pos < _data.length() ) {
+		++_pos;
+	}
+	while ( _pos < _data.length() && !is_word_break_character<subword>( _data[_pos] ) ) {
+		++_pos;
+	}
+	while ( _pos < _data.length() && is_word_break_character<false>( _data[_pos] ) ) {
+		++_pos;
+	}
+	return ( Replxx::ACTION_RESULT::CONTINUE );
+}
+
+template <bool subword>
+Replxx::ACTION_RESULT Replxx::ReplxxImpl::move_to_previous_word( char32_t ) {
+	if (_pos > 0 ) {
+		--_pos;
+	}
+	while ( _pos > 0 && is_word_break_character<false>( _data[_pos] ) ) {
+		--_pos;
+	}
+	while ( _pos > 0 && !is_word_break_character<subword>( _data[_pos] ) && !is_word_break_character<subword>( _data[_pos - 1] ) ) {
+		--_pos;
+	}
+	return ( Replxx::ACTION_RESULT::CONTINUE );
+}
+
+Replxx::ACTION_RESULT Replxx::ReplxxImpl::move_to_character( char32_t c ) {
+	int delete_the_char = (c & Replxx::KEY::BASE_META) != 0;
+	c &= ~Replxx::KEY::BASE_META;
+	int index = -1;
+	for (int i = _pos + 1; i < _data.length(); i++) {
+		if (_data[i] == c) {
+			index = i;
+			break;
+		}
+		if (_data[i] == '\n')
+			break;
+	}
+	if (index != -1) {
+		_pos = index - 1 + delete_the_char;
+	}
+	return ( Replxx::ACTION_RESULT::CONTINUE );
+}
+
+Replxx::ACTION_RESULT Replxx::ReplxxImpl::move_to_character_reverse( char32_t c ) {
+	int delete_the_char = (c & Replxx::KEY::BASE_META) != 0;
+	c &= ~Replxx::KEY::BASE_META;
+	int index = -1;
+	for (int i = _pos - 1; i >= 0; i--) {
+		if (_data[i] == c) {
+			index = i;
+			break;
+		}
+		if (_data[i] == '\n')
+			break;
+	}
+	if (index != -1) {
+		_pos = index + 1 - delete_the_char;
+	}
+	return ( Replxx::ACTION_RESULT::CONTINUE );
+}
+
+Replxx::ACTION_RESULT Replxx::ReplxxImpl::move_to_line( char32_t c ) {
+	int line = c;
+	int pos;
+	if (c > 0) {
+		int i = 1;
+		pos = 0;
+		for (int j = 0; j < _data.length() && i < line; ) {
+			if (_data[j++] == '\n') {
+				i++;
+				pos = j;
+			}
+		}
+	}
+	/* Move to last line. */
+	else {
+		for (pos = _data.length(); pos > 0 && _data[pos - 1] != '\n'; pos--);
+	}
+	_pos = pos;
+	return ( Replxx::ACTION_RESULT::CONTINUE );
+}
+
 // meta-Backspace, kill word to left of cursor
 template <bool subword>
 Replxx::ACTION_RESULT Replxx::ReplxxImpl::kill_word_to_left( char32_t ) {
@@ -1680,10 +1822,10 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::kill_word_to_right( char32_t ) {
 Replxx::ACTION_RESULT Replxx::ReplxxImpl::kill_to_whitespace_to_left( char32_t ) {
 	if ( _pos > 0 ) {
 		int startingPos = _pos;
-		while ( ( _pos > 0 ) && isspace( _data[_pos - 1] ) ) {
+		while ( ( _pos > 0 ) && iswspace( static_cast<wint_t>( _data[_pos - 1] ) ) ) {
 			--_pos;
 		}
-		while ( ( _pos > 0 ) && ! isspace( _data[_pos - 1] ) ) {
+		while ( ( _pos > 0 ) && ! iswspace( static_cast<wint_t>( _data[_pos - 1] ) ) ) {
 			-- _pos;
 		}
 		_killRing.kill( _data.get() + _pos, startingPos - _pos, false );
@@ -1774,11 +1916,11 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::yank_last_arg( char32_t ) {
 	}
 	UnicodeString const& histLine( _history.yank_line() );
 	int endPos( histLine.length() );
-	while ( ( endPos > 0 ) && isspace( histLine[endPos - 1] ) ) {
+	while ( ( endPos > 0 ) && iswspace( static_cast<wint_t>( histLine[endPos - 1] ) ) ) {
 		-- endPos;
 	}
 	int startPos( endPos );
-	while ( ( startPos > 0 ) && ! isspace( histLine[startPos - 1] ) ) {
+	while ( ( startPos > 0 ) && ! iswspace( static_cast<wint_t>( histLine[startPos - 1] ) ) ) {
 		-- startPos;
 	}
 	_pos -= _lastYankSize;
@@ -1884,6 +2026,76 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::abort_line( char32_t keyCode_ ) {
 Replxx::ACTION_RESULT Replxx::ReplxxImpl::delete_character( char32_t ) {
 	if ( ( _data.length() > 0 ) && ( _pos < _data.length() ) ) {
 		_data.erase( _pos );
+		refresh_line();
+	}
+	return ( Replxx::ACTION_RESULT::CONTINUE );
+}
+
+#if 0
+template <bool subword>
+Replxx::ACTION_RESULT Replxx::ReplxxImpl::move_to_next_word( char32_t ) {
+	if ( _pos < _data.length() ) {
+		while ( _pos < _data.length() && !is_word_break_character<subword>( _data[_pos] ) ) {
+			++_pos;
+		}
+		while ( _pos < _data.length() && is_word_break_character<subword>( _data[_pos] ) ) {
+			++_pos;
+		}
+	}
+	return ( Replxx::ACTION_RESULT::CONTINUE );
+}
+#endif
+
+template <bool subword>
+Replxx::ACTION_RESULT Replxx::ReplxxImpl::delete_until_next_word( char32_t ) {
+	if (_pos < _data.length())
+		_data.erase( _pos );
+
+	while ( _data.length() > 0 && _pos < _data.length() && !is_word_break_character<subword>( _data[_pos] ) ) {
+		_data.erase( _pos );
+	}
+	while ( _data.length() > 0 && _pos < _data.length() && is_word_break_character<false>( _data[_pos] ) ) {
+		_data.erase( _pos );
+	}
+	refresh_line();
+	return ( Replxx::ACTION_RESULT::CONTINUE );
+}
+
+Replxx::ACTION_RESULT Replxx::ReplxxImpl::delete_until_character( char32_t c ) {
+	int delete_the_char = (c & Replxx::KEY::BASE_META) != 0;
+	c &= ~Replxx::KEY::BASE_META;
+	int index = -1;
+	for (int i = _pos + 1; i < _data.length(); i++) {
+		if (_data[i] == c) {
+			index = i;
+			break;
+		}
+		if (_data[i] == '\n')
+			break;
+	}
+	if (index != -1) {
+		for (int i = _pos; i < index + delete_the_char; i++)
+			_data.erase(_pos);
+		refresh_line();
+	}
+	return ( Replxx::ACTION_RESULT::CONTINUE );
+}
+
+Replxx::ACTION_RESULT Replxx::ReplxxImpl::delete_backwards_until_character( char32_t c ) {
+	int delete_the_char = (c & Replxx::KEY::BASE_META) != 0;
+	c &= ~Replxx::KEY::BASE_META;
+	int index = -1;
+	for (int i = _pos - 1; i >= 0; i--) {
+		if (_data[i] == c) {
+			index = i;
+			break;
+		}
+		if (_data[i] == '\n')
+			break;
+	}
+	if (index != -1) {
+		while (_pos > index + 1 - delete_the_char)
+			_data.erase(--_pos);
 		refresh_line();
 	}
 	return ( Replxx::ACTION_RESULT::CONTINUE );
@@ -2257,6 +2469,9 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::incremental_history_search( char32_t s
 	// don't have to special case it
 	if ( _history.is_last() ) {
 		_history.update_last( _data );
+	} else {
+		// `historyLinePosition` starts as `_pos`, a position in `_data`, and is applied to the current entry.
+		_history.set_current_scratch( _data );
 	}
 	_history.save_pos();
 	int historyLinePosition( _pos );
@@ -2450,7 +2665,7 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::incremental_history_search( char32_t s
 	// leaving history search, restore previous prompt, maybe make searched line
 	// current
 	Prompt pb( _terminal );
-	UnicodeString tempUnicode( &_prompt._text[_prompt._lastLinePosition], _prompt._text.length() - _prompt._lastLinePosition );
+	UnicodeString tempUnicode( _prompt._text, _prompt._lastLinePosition );
 	pb.set_text( tempUnicode );
 	pb.update_screen_columns();
 	if ( useSearchedLine && ( activeHistoryLine.length() > 0 ) ) {
@@ -2486,7 +2701,7 @@ Replxx::ACTION_RESULT Replxx::ReplxxImpl::bracketed_paste( char32_t ) {
 	static const UnicodeString BRACK_PASTE_SUFF( "\033[201~" );
 	static const int BRACK_PASTE_SLEN( BRACK_PASTE_SUFF.length() );
 	UnicodeString buf;
-	while ( char32_t c = read_unicode_character(_in_fd) ) {
+	while ( char32_t c = _terminal.read_unicode_character() ) {
 		if ( ( c == '\r' ) || ( c == KEY::control( 'M' ) ) ) {
 			c = '\n';
 		}
@@ -2621,6 +2836,18 @@ void Replxx::ReplxxImpl::set_indent_multiline( bool val ) {
 	_indentMultiline = val;
 }
 
+void Replxx::ReplxxImpl::set_editing_mode( int mode ) {
+	_editingMode = mode;
+}
+
+void Replxx::ReplxxImpl::set_escdelay( int delay ) {
+	_terminal.set_escdelay( delay );
+}
+
+int Replxx::ReplxxImpl::prompt_indentation( void ) {
+	return _prompt.indentation();
+}
+
 /**
  * Display the dynamic incremental search prompt and the current user input
  * line.
@@ -2631,6 +2858,7 @@ void Replxx::ReplxxImpl::set_indent_multiline( bool val ) {
  * @param pos   current cursor position within the buffer (0 <= pos <= len)
  */
 void Replxx::ReplxxImpl::dynamic_refresh(Prompt& oldPrompt, Prompt& newPrompt, char32_t* buf32, int len, int pos) {
+	Terminal::Frame frame( _terminal );
 	clear_self_to_end_of_screen( &oldPrompt );
 	// calculate the position of the end of the prompt
 	int xEndOfPrompt( 0 );

@@ -13,26 +13,30 @@ namespace replxx {
 
 int mk_wcwidth( char32_t );
 
-int virtual_render( char32_t const* display_, int size_, int& x_, int& y_, int screenColumns_, int promptLen_, char32_t* rendered_, int* renderedSize_, int out_fd_) {
-	char32_t* out( rendered_ );
+int virtual_render( char32_t const* display_, int size_, int& x_, int& y_, int screenColumns_, int promptLen_, UnicodeString* rendered_, int* lastLineStart_, int out_fd_) {
 	int visibleCount( 0 );
-	auto render = [&rendered_, &renderedSize_, &out, &visibleCount]( char32_t c_, bool visible_, bool renderAttributes_ = true ) {
-		if ( rendered_ && renderedSize_ && renderAttributes_ ) {
-			*out = c_;
-			++ out;
+	auto render = [&rendered_, &visibleCount]( char32_t c_, bool visible_, bool renderAttributes_ = true ) {
+		if ( rendered_ && renderAttributes_ ) {
+			rendered_->push_back( c_ );
 			if ( visible_ ) {
 				++ visibleCount;
 			}
 		}
 	};
+	auto start_line = [&rendered_, &lastLineStart_]() {
+		if ( rendered_ && lastLineStart_ ) {
+			*lastLineStart_ = rendered_->length();
+		}
+	};
 	bool wrapped( false );
-	auto advance_cursor = [&x_, &y_, &screenColumns_, &wrapped]( int by_ = 1 ) {
+	auto advance_cursor = [&x_, &y_, &screenColumns_, &wrapped, &start_line]( int by_ = 1 ) {
 		wrapped = false;
 		x_ += by_;
 		if ( x_ >= screenColumns_ ) {
 			x_ = 0;
 			++ y_;
 			wrapped = true;
+			start_line();
 		}
 	};
 	bool const renderAttributes( !!tty::is_a_tty(out_fd_) );
@@ -45,6 +49,7 @@ int virtual_render( char32_t const* display_, int size_, int& x_, int& y_, int s
 				++ y_;
 			}
 			x_ = promptLen_;
+			start_line();
 			++ pos;
 			continue;
 		}
@@ -121,9 +126,6 @@ int virtual_render( char32_t const* display_, int size_, int& x_, int& y_, int s
 		advance_cursor( wcw );
 		++ pos;
 	}
-	if ( rendered_ && renderedSize_ ) {
-		*renderedSize_ = out - rendered_;
-	}
 	return ( visibleCount );
 }
 
@@ -134,7 +136,8 @@ char const* ansi_color( Replxx::Color color_ ) {
 	char const* bold( ( code & color::BOLD ) != 0 ? ";1" : "" );
 	char const* underline = ( ( code & color::UNDERLINE ) != 0 ? ";4" : "" );
 	static int const MAX_COLOR_CODE_SIZE( 32 );
-	static thread_local char colorBuffer[MAX_COLOR_CODE_SIZE];
+	/* Per thread: the function is called concurrently, and the result is consumed right away. */
+	thread_local char colorBuffer[MAX_COLOR_CODE_SIZE];
 	int pos( 0 );
 	if ( ( code & static_cast<int unsigned>( Replxx::Color::DEFAULT ) ) != 0 ) {
 		pos = snprintf( colorBuffer, MAX_COLOR_CODE_SIZE, "\033[0%s%sm", underline, bold );
