@@ -275,6 +275,10 @@ void Replxx::bind_key( char32_t keyPress_, key_press_handler_t handler_, int edi
 	_impl->bind_key( keyPress_, handler_, editingMode_ );
 }
 
+void Replxx::bind_default_key( key_press_handler_t handler_, int editingMode_ ) {
+	_impl->bind_default_key( handler_, editingMode_ );
+}
+
 void Replxx::bind_key_internal( char32_t keyPress_, char const* actionName_, int editingMode_ ) {
 	_impl->bind_key_internal( keyPress_, actionName_, editingMode_ );
 }

@@ -188,6 +188,7 @@ Replxx::ReplxxImpl::ReplxxImpl( std::istream & in_, std::ostream & out_, int in_
 	, _namedActions()
 	, _editingMode( 0 )
 	, _keyPressHandlers()
+	, _defaultKeyPressHandlers()
 	, _terminal(in_fd_, out_fd_)
 	, _currentThread()
 	, _prompt( _terminal )
@@ -465,6 +466,10 @@ void Replxx::ReplxxImpl::bind_key( char32_t code_, Replxx::key_press_handler_t h
 	_keyPressHandlers[editingMode_][code_] = handler_;
 }
 
+void Replxx::ReplxxImpl::bind_default_key( Replxx::key_press_handler_t handler_, int editingMode_ ) {
+	_defaultKeyPressHandlers[editingMode_] = handler_;
+}
+
 void Replxx::ReplxxImpl::bind_key_internal( char32_t code_, char const* actionName_, int editingMode_ ) {
 	named_actions_t::const_iterator it( _namedActions.find( actionName_ ) );
 	if ( it == _namedActions.end() ) {
@@ -528,6 +533,7 @@ char32_t Replxx::ReplxxImpl::read_char( HINT_ACTION hintAction_ ) {
 		}
 
 		std::lock_guard<std::mutex> l( _mutex );
+		Terminal::Frame frame( _terminal );
 		_terminal.set_cursor_visible( false );
 		clear_self_to_end_of_screen();
 
@@ -1089,6 +1095,8 @@ void Replxx::ReplxxImpl::refresh_line( HINT_ACTION hintAction_, bool refreshProm
 	// in other words _display should not be re-indented
 	replxx::virtual_render( _display.data(), static_cast<int>( _display.size() ), xEndOfInput, yEndOfInput, _prompt.screen_columns(), 0 );
 
+	// draw the whole frame at once, so the terminal does not show it half-drawn
+	Terminal::Frame frame( _terminal );
 	// position at the end of the prompt, clear to end of previous input
 	_terminal.set_cursor_visible( false );
 	if ( refreshPrompt_ ) {
@@ -1131,6 +1139,7 @@ void Replxx::ReplxxImpl::move_cursor( void ) {
 	int yCursorPos( 0 );
 	virtual_render( _data.get(), _pos, xCursorPos, yCursorPos );
 	// position the cursor
+	Terminal::Frame frame( _terminal );
 	_terminal.jump_cursor( xCursorPos, -( _prompt._cursorRowOffset - _prompt._extraLines - yCursorPos ) );
 	_prompt._cursorRowOffset = _prompt._extraLines + yCursorPos;
 	_oldPos = _pos;
@@ -1149,10 +1158,13 @@ int Replxx::ReplxxImpl::context_length() {
 }
 
 void Replxx::ReplxxImpl::repaint( void ) {
+	Terminal::Frame frame( _terminal );
 	_prompt.write();
 	for ( int i( _prompt._extraLines ); i < _prompt._cursorRowOffset; ++ i ) {
 		_terminal.write8( "\n", 1 );
 	}
+	// An explicit repaint must draw now: a skipped refresh is redone only by the input loop.
+	_lastRefreshTime = 0;
 	refresh_line( HINT_ACTION::REPAINT );
 }
 
@@ -1442,6 +1454,7 @@ char32_t Replxx::ReplxxImpl::do_complete_line( bool showCompletions_ ) {
 	}
 
 	// display the prompt on a new line, then redisplay the input buffer
+	Terminal::Frame frame( _terminal );
 	if (!stopList || c == Replxx::KEY::control('C')) {
 		_terminal.write8( "\n", 1 );
 	}
@@ -1489,14 +1502,24 @@ int Replxx::ReplxxImpl::get_input_line( void ) {
 		}
 
 		if (c == -2) {
+			Terminal::Frame frame( _terminal );
 			_prompt.write();
 			refresh_line();
 			continue;
 		}
 
+		Replxx::key_press_handler_t* handler( nullptr );
 		key_press_handlers_t::iterator it( _keyPressHandlers[_editingMode].find( c ) );
 		if ( it != _keyPressHandlers[_editingMode].end() ) {
-			next = it->second( c );
+			handler = &it->second;
+		} else {
+			key_press_handlers_t::iterator dit( _defaultKeyPressHandlers.find( _editingMode ) );
+			if ( dit != _defaultKeyPressHandlers.end() ) {
+				handler = &dit->second;
+			}
+		}
+		if ( handler ) {
+			next = ( *handler )( c );
 			if ( _modifiedState ) {
 				refresh_line();
 			} else if ( _moveCursor ) {
@@ -2835,6 +2858,7 @@ int Replxx::ReplxxImpl::prompt_indentation( void ) {
  * @param pos   current cursor position within the buffer (0 <= pos <= len)
  */
 void Replxx::ReplxxImpl::dynamic_refresh(Prompt& oldPrompt, Prompt& newPrompt, char32_t* buf32, int len, int pos) {
+	Terminal::Frame frame( _terminal );
 	clear_self_to_end_of_screen( &oldPrompt );
 	// calculate the position of the end of the prompt
 	int xEndOfPrompt( 0 );

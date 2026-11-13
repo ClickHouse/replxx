@@ -132,6 +132,7 @@ private:
 	named_actions_t _namedActions;
 	int _editingMode;
 	std::unordered_map<int, key_press_handlers_t> _keyPressHandlers;
+	key_press_handlers_t _defaultKeyPressHandlers;
 	Terminal _terminal;
 	std::thread::id _currentThread;
 	Prompt _prompt;
@@ -211,6 +212,7 @@ public:
 	Replxx::ACTION_RESULT invoke( Replxx::ACTION, char32_t );
 	bool history_recalled( void ) const;
 	void bind_key( char32_t, Replxx::key_press_handler_t, int editingMode = 0 );
+	void bind_default_key( Replxx::key_press_handler_t, int editingMode = 0 );
 	void bind_key_internal( char32_t, char const*, int editingMode = 0 );
 	Replxx::State get_state( void ) const;
 	void set_state( Replxx::State const& );
