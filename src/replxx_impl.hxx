@@ -111,6 +111,11 @@ private:
 	UnicodeString  _hint;
 	int _prefix; // prefix length used in common prefix search
 	int _hintSelection; // Currently selected hint.
+	/* The hint rows of a word keep their column while it is edited, see `handle_hints`. */
+	int _hintRowsWordStart; // position of the word in the input, -1 if not set
+	int _hintRowsWordColumn; // screen column of the word
+	int _hintRowsScreenColumns;
+	int _hintRowsColumn;
 	History _history;
 	KillRing _killRing;
 	int long long _lastRefreshTime;
@@ -302,6 +307,11 @@ private:
 	hints_t call_hinter( std::string const& input, int&, Replxx::Color& color ) const;
 	void refresh_line( HINT_ACTION = HINT_ACTION::REGENERATE, bool refreshPrompt_ = false );
 	void move_cursor( void );
+	void update_screen_columns( void );
+	int hint_rows_column( int, int );
+#ifndef _WIN32
+	void write_wrap( void );
+#endif
 	void indent( void );
 	int virtual_render( char32_t const*, int, int&, int&, Prompt const* = nullptr );
 	void render( char32_t );

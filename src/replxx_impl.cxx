@@ -136,6 +136,8 @@ static bool isUnsupportedTerm(void) {
 }
 
 int long long RAPID_REFRESH_MS = 1;
+/* In a narrower terminal the hint rows are not moved left to fit, only cropped. */
+int const MIN_SCREEN_COLUMNS_TO_MOVE_HINTS = 50;
 int long long RAPID_REFRESH_US = RAPID_REFRESH_MS * 1000;
 
 inline int long long now_us( void ) {
@@ -167,6 +169,10 @@ Replxx::ReplxxImpl::ReplxxImpl( std::istream & in_, std::ostream & out_, int in_
 	, _hint()
 	, _prefix( 0 )
 	, _hintSelection( -1 )
+	, _hintRowsWordStart( -1 )
+	, _hintRowsWordColumn( 0 )
+	, _hintRowsScreenColumns( 0 )
+	, _hintRowsColumn( 0 )
 	, _history()
 	, _killRing()
 	, _lastRefreshTime( now_us() )
@@ -526,7 +532,7 @@ char32_t Replxx::ReplxxImpl::read_char( HINT_ACTION hintAction_ ) {
 		if ( eventType == Terminal::EVENT_TYPE::RESIZE ) {
 			// caught a window resize event
 			// now redraw the prompt and line
-			_prompt.update_screen_columns();
+			update_screen_columns();
 			// redraw the original prompt with current input
 			refresh_line( HINT_ACTION::REPAINT );
 			continue;
@@ -956,7 +962,8 @@ void Replxx::ReplxxImpl::handle_hints( HINT_ACTION hintAction_ ) {
 		}
 		if ( _hintSelection != -1 ) {
 			_hint = _hintsCache[_hintSelection];
-			int len( min<int>( _hint.length(), maxCol - ( startCol - _hintContextLenght ) ) );
+			// `startCol` is the column of the start of the word, so the inline hint fits up to `maxCol - startCol` characters of it
+			int len( min<int>( _hint.length(), maxCol - startCol ) );
 			if ( _hintContextLenght < len ) {
 				set_color( _hintColor );
 				for ( int i( _hintContextLenght ); i < len; ++ i ) {
@@ -965,13 +972,14 @@ void Replxx::ReplxxImpl::handle_hints( HINT_ACTION hintAction_ ) {
 				set_color( Replxx::Color::DEFAULT );
 			}
 		}
+		int rowsCol( hint_rows_column( startCol, maxCol ) );
 		for ( int hintRow( 0 ); hintRow < min( hintCount, _maxHintRows ); ++ hintRow ) {
 #ifdef _WIN32
 			_display.push_back( '\r' );
 #endif
 			_display.push_back( '\n' );
 			int col( 0 );
-			for ( int i( 0 ); ( i < startCol ) && ( col < maxCol ); ++ i, ++ col ) {
+			for ( int i( 0 ); ( i < rowsCol ) && ( col < maxCol ); ++ i, ++ col ) {
 				_display.push_back( ' ' );
 			}
 			set_color( _hintColor );
@@ -993,6 +1001,32 @@ void Replxx::ReplxxImpl::handle_hints( HINT_ACTION hintAction_ ) {
 	}
 	set_color(Replxx::Color::DEFAULT);
 	return;
+}
+
+/**
+ * The column of the hint rows below the word at `startCol_`. When the widest hint would not fit
+ * to the right of the word, the rows move left so that it does. They must not jump back and forth
+ * while the word is edited, so the column is kept for the word and only moves further left
+ * when a wider hint appears. The width of all hints is used, not only of the rows on the screen,
+ * so scrolling through them does not move the rows either.
+ */
+int Replxx::ReplxxImpl::hint_rows_column( int startCol_, int maxCol_ ) {
+	if ( maxCol_ <= MIN_SCREEN_COLUMNS_TO_MOVE_HINTS ) {
+		return ( startCol_ );
+	}
+	int wordStart( _pos - _hintContextLenght );
+	if ( ( wordStart != _hintRowsWordStart ) || ( startCol_ != _hintRowsWordColumn ) || ( maxCol_ != _hintRowsScreenColumns ) ) {
+		_hintRowsWordStart = wordStart;
+		_hintRowsWordColumn = startCol_;
+		_hintRowsScreenColumns = maxCol_;
+		_hintRowsColumn = startCol_;
+	}
+	int widest( 0 );
+	for ( UnicodeString const& h : _hintsCache ) {
+		widest = max( widest, h.length() );
+	}
+	_hintRowsColumn = min( _hintRowsColumn, max( 0, maxCol_ - widest ) );
+	return ( _hintRowsColumn );
 }
 
 // check for a matching brace/bracket/paren, remember its position if found
@@ -1061,6 +1095,27 @@ int Replxx::ReplxxImpl::virtual_render( char32_t const* buffer_, int len_, int& 
 	return ( replxx::virtual_render( buffer_, len_, xPos_, yPos_, prompt.screen_columns(), _indentMultiline ? prompt.indentation() : 0 ), _out_fd);
 }
 
+#ifndef _WIN32
+namespace {
+
+/* The position of the first character from `pos_` that is not a part of a CSI escape sequence. */
+int skip_escape_sequences( char32_t const* display_, int pos_, int size_ ) {
+	while ( ( pos_ < size_ ) && ( display_[pos_] == '\033' ) ) {
+		++ pos_;
+		if ( ( pos_ < size_ ) && ( display_[pos_] == '[' ) ) {
+			++ pos_;
+			while ( ( pos_ < size_ ) && ! ( ( display_[pos_] >= 0x40 ) && ( display_[pos_] <= 0x7e ) ) ) {
+				++ pos_;
+			}
+			++ pos_;
+		}
+	}
+	return ( pos_ );
+}
+
+}
+#endif
+
 /**
  * Refresh the user's input line: the prompt is already onscreen and is not
  * redrawn here screen position
@@ -1077,7 +1132,7 @@ void Replxx::ReplxxImpl::refresh_line( HINT_ACTION hintAction_, bool refreshProm
 	// The terminal may be resized without `SIGWINCH`, e.g. when the window change handler
 	// is not installed, so the width is re-read on every refresh.
 	if ( _prompt.screen_columns() != _terminal.get_screen_columns() ) {
-		_prompt.update_screen_columns();
+		update_screen_columns();
 	}
 	render( hintAction_ );
 	handle_hints( hintAction_ );
@@ -1110,18 +1165,40 @@ void Replxx::ReplxxImpl::refresh_line( HINT_ACTION hintAction_, bool refreshProm
 		);
 	}
 	// display the input line
+	[[maybe_unused]] bool wrapped( false );
 	if ( _hasNewlines ) {
 		_terminal.clear_screen( Terminal::CLEAR_SCREEN::TO_END );
 		_terminal.write32( _display.data(), static_cast<int>( _display.size() ) );
 	} else {
 		_terminal.write32( _display.data(), _displayInputLength );
+		int hintsStart( _displayInputLength );
+		int displaySize( static_cast<int>( _display.size() ) );
+#ifndef _WIN32
+		// When the input ends at the end of a row, the cursor stays on its last character,
+		// and clearing from there would erase it: move to the next row first.
+		int xEndOfText( _prompt.indentation() );
+		int yEndOfText( 0 );
+		replxx::virtual_render( _display.data(), _displayInputLength, xEndOfText, yEndOfText, _prompt.screen_columns(), 0 );
+		if ( ( xEndOfText == 0 ) && ( yEndOfText > 0 ) && ! _data.is_empty() && ( _data.back() != '\n' ) ) {
+			write_wrap();
+			// The cursor is at the start of the next row now, while the line feed
+			// before the first hint row expects it at the end of the full row.
+			int i( skip_escape_sequences( _display.data(), hintsStart, displaySize ) );
+			if ( ( i < displaySize ) && ( _display[i] == '\n' ) ) {
+				_terminal.write32( _display.data() + hintsStart, i - hintsStart );
+				hintsStart = i + 1;
+			}
+			// nothing visible follows, so the cursor is at the end of the display already
+			wrapped = ( skip_escape_sequences( _display.data(), hintsStart, displaySize ) == displaySize );
+		}
+#endif
 		_terminal.clear_screen( Terminal::CLEAR_SCREEN::TO_END );
-		_terminal.write32( _display.data() + _displayInputLength, static_cast<int>( _display.size() ) - _displayInputLength );
+		_terminal.write32( _display.data() + hintsStart, displaySize - hintsStart );
 	}
 #ifndef _WIN32
 	// we have to generate our own newline on line wrap
-	if ( ( xEndOfInput == 0 ) && ( yEndOfInput > 0 ) && ! _data.is_empty() && ( _data.back() != '\n' ) ) {
-		_terminal.write8( "\n", 1 );
+	if ( ! wrapped && ( xEndOfInput == 0 ) && ( yEndOfInput > 0 ) && ! _data.is_empty() && ( _data.back() != '\n' ) ) {
+		write_wrap();
 	}
 #endif
 	// position the cursor
@@ -1131,6 +1208,30 @@ void Replxx::ReplxxImpl::refresh_line( HINT_ACTION hintAction_, bool refreshProm
 	_lastRefreshTime = now_us();
 	_oldPos = _pos;
 	_moveCursor = false;
+}
+
+#ifndef _WIN32
+/**
+ * Move the cursor from the end of a full row to the start of the next one. A line feed would do it,
+ * but the terminal would not mark the row as soft-wrapped and would not join it back on resize,
+ * so print a space, which wraps the row, and return over it.
+ */
+void Replxx::ReplxxImpl::write_wrap( void ) {
+	_terminal.write8( " \r", 2 );
+}
+#endif
+
+/**
+ * Take the new width of the terminal. A terminal reflows the soft-wrapped lines on resize
+ * and keeps the cursor after the same character, so the row of the cursor below the start
+ * of the prompt is the one the new width gives, not the one that was drawn.
+ */
+void Replxx::ReplxxImpl::update_screen_columns( void ) {
+	_prompt.update_screen_columns();
+	int xCursorPos( _prompt.indentation() );
+	int yCursorPos( 0 );
+	virtual_render( _data.get(), std::min( _oldPos, _data.length() ), xCursorPos, yCursorPos );
+	_prompt._cursorRowOffset = _prompt._extraLines + yCursorPos;
 }
 
 void Replxx::ReplxxImpl::move_cursor( void ) {
@@ -1475,6 +1576,7 @@ int Replxx::ReplxxImpl::get_input_line( void ) {
 
 	// display the prompt
 	_prompt.write();
+	_hintRowsWordStart = -1;
 
 	// the cursor starts out at the end of the prompt
 	_prompt._cursorRowOffset = _prompt._extraLines;
@@ -2884,7 +2986,7 @@ void Replxx::ReplxxImpl::dynamic_refresh(Prompt& oldPrompt, Prompt& newPrompt, c
 #ifndef _WIN32
 	// we have to generate our own newline on line wrap
 	if ( ( xEndOfInput == 0 ) && ( yEndOfInput > 0 ) && ( len > 0 ) && ( buf32[len - 1] != '\n' ) ) {
-		_terminal.write8( "\n", 1 );
+		write_wrap();
 	}
 #endif
 	// position the cursor
